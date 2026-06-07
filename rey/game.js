@@ -59,6 +59,7 @@ function freshState() {
       blue: {g:200, w:200, pop:0, cap:10},
     },
     ents: [], nodes: [], projectiles: [],
+    particles: [],   // sistema de partículas
   };
 }
 
@@ -96,6 +97,7 @@ function addNode(type, x, y, amount) {
 // ---------- Inicialización de partida ----------
 function initMap() {
   G = freshState();
+  TERRAIN.init();
   FF.init();
   FOG.init();
 
@@ -279,6 +281,264 @@ function issue(cmd){
 }
 
 // ============================================================
+//  TERRAIN — openage terrain_tile / terrain_chunk
+//  Tiles con costos de movimiento variables: pasto(1), barro(3), agua(255), camino(0.5)
+// ============================================================
+const TERRAIN = {
+  TILE: 80,           // tamaño de tile en px
+  tiles: null,        // Float32Array de costos por tile (para FF)
+  biomes: null,       // Uint8Array tipo visual: 0=pasto 1=barro 2=agua 3=camino
+  COLS: 0, ROWS: 0,
+
+  init() {
+    this.COLS = Math.ceil(MAP_W / this.TILE);
+    this.ROWS = Math.ceil(MAP_H / this.TILE);
+    const N = this.COLS * this.ROWS;
+    this.tiles  = new Float32Array(N).fill(1);
+    this.biomes = new Uint8Array(N);   // 0=pasto por defecto
+
+    // Genera parches de barro y agua usando noise simple
+    const rng = (x,y,s) => {
+      let n=(x*374761393+y*668265263+s*1234567)|0;
+      n=(n^(n>>13))*1274126177; return ((n^(n>>16))>>>0)/4294967296;
+    };
+    // Caminos horizontales y verticales centrales
+    const midY = Math.floor(this.ROWS/2);
+    const midX = Math.floor(this.COLS/2);
+    for(let cx=0; cx<this.COLS; cx++){
+      if(Math.abs(Math.floor(MAP_H/2/this.TILE)-midY)<=0){
+        this.set(cx,midY,3,0.6); // camino horizontal central
+      }
+    }
+    for(let cy=0; cy<this.ROWS; cy++){
+      this.set(midX,cy,3,0.6); // camino vertical central
+    }
+
+    // Parches de barro (cost 2.5)
+    for(let cy=0; cy<this.ROWS; cy++){
+      for(let cx=0; cx<this.COLS; cx++){
+        if(this.biomes[cy*this.COLS+cx]!==0) continue;
+        const r=rng(cx,cy,7);
+        if(r<0.12) this.set(cx,cy,1,2.5);       // barro
+        else if(r<0.04) this.set(cx,cy,2,255);   // agua (menor probabilidad)
+      }
+    }
+
+    // Limpia tiles cerca de castillos para no bloquear spawn
+    const clearAround=(wx,wy,rad)=>{
+      const cx0=Math.floor((wx-rad)/this.TILE), cy0=Math.floor((wy-rad)/this.TILE);
+      const cx1=Math.ceil((wx+rad)/this.TILE),  cy1=Math.ceil((wy+rad)/this.TILE);
+      for(let cy=cy0;cy<=cy1;cy++) for(let cx=cx0;cx<=cx1;cx++) this.set(cx,cy,0,1);
+    };
+    clearAround(320, MAP_H/2, 180);
+    clearAround(MAP_W-320, MAP_H/2, 180);
+  },
+
+  set(cx,cy,biome,cost){
+    if(cx<0||cx>=this.COLS||cy<0||cy>=this.ROWS) return;
+    const i=cy*this.COLS+cx;
+    this.biomes[i]=biome; this.tiles[i]=cost;
+  },
+
+  // Aplica costos de terreno al FF.cost (se llama en rebuildCost)
+  applyToFF() {
+    const ffCell=FF.CELL, tileSize=this.TILE;
+    const ratio=tileSize/ffCell;
+    for(let tcy=0;tcy<this.ROWS;tcy++){
+      for(let tcx=0;tcx<this.COLS;tcx++){
+        const cost=this.tiles[tcy*this.COLS+tcx];
+        if(cost===1) continue;
+        // Marca todas las celdas FF dentro de este tile
+        const fx0=Math.floor(tcx*ratio), fy0=Math.floor(tcy*ratio);
+        const fx1=Math.ceil((tcx+1)*ratio), fy1=Math.ceil((tcy+1)*ratio);
+        for(let fy=fy0;fy<fy1;fy++) for(let fx=fx0;fx<fx1;fx++){
+          if(fx<0||fx>=FF.COLS||fy<0||fy>=FF.ROWS) continue;
+          const fi=fy*FF.COLS+fx;
+          if(FF.cost[fi]!==255) FF.cost[fi]=Math.max(FF.cost[fi], cost===255?255:Math.round(cost));
+        }
+      }
+    }
+  },
+
+  // Devuelve factor de velocidad en posición mundo (1=normal, <1=más rápido, >1=más lento)
+  speedFactor(wx,wy){
+    const cx=clamp(Math.floor(wx/this.TILE),0,this.COLS-1);
+    const cy=clamp(Math.floor(wy/this.TILE),0,this.ROWS-1);
+    const c=this.tiles[cy*this.COLS+cx];
+    if(c>=255) return 0.1;
+    if(c<=0.6) return 1.35;  // camino: más rápido
+    if(c>=2)   return 0.55;  // barro: más lento
+    return 1;
+  },
+};
+
+// ============================================================
+//  SPATIAL HASH GRID — O(1) lookup de vecinos (openage architecture)
+//  Reemplaza O(n²) en separate() y nearestEnemy()
+// ============================================================
+const SH = {
+  CELL: 80,
+  map: new Map(),
+
+  clear(){ this.map.clear(); },
+  key(wx,wy){ return `${(wx/this.CELL)|0},${(wy/this.CELL)|0}`; },
+
+  insert(e){
+    const k=this.key(e.x,e.y);
+    if(!this.map.has(k)) this.map.set(k,[]);
+    this.map.get(k).push(e);
+  },
+
+  // Devuelve entidades en radio
+  query(wx,wy,r){
+    const cr=Math.ceil(r/this.CELL);
+    const cx=(wx/this.CELL)|0, cy=(wy/this.CELL)|0;
+    const res=[];
+    for(let dy=-cr;dy<=cr;dy++) for(let dx=-cr;dx<=cr;dx++){
+      const k=`${cx+dx},${cy+dy}`;
+      const bucket=this.map.get(k);
+      if(bucket) for(const e of bucket) res.push(e);
+    }
+    return res;
+  },
+
+  rebuild(ents){ this.clear(); for(const e of ents) this.insert(e); },
+};
+
+// ============================================================
+//  PARTÍCULAS — renderer de efectos visuales
+// ============================================================
+function spawnParticles(x, y, type){
+  if(!G || !G.particles) return;
+  const now = performance.now()/1000;
+  if(type==='hit'){
+    for(let i=0;i<6;i++){
+      const a=Math.random()*Math.PI*2, sp=30+Math.random()*60;
+      G.particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
+        life:0.35, maxLife:0.35, color:'#ff6b3b', r:2.5, type:'spark'});
+    }
+  } else if(type==='death'){
+    for(let i=0;i<14;i++){
+      const a=Math.random()*Math.PI*2, sp=20+Math.random()*90;
+      G.particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
+        life:0.6, maxLife:0.6, color:i%2?'#c0392b':'#e74c3c', r:3+Math.random()*3, type:'spark'});
+    }
+  } else if(type==='gold'){
+    for(let i=0;i<5;i++){
+      const a=-Math.PI/2 + (Math.random()-0.5)*1.2, sp=40+Math.random()*40;
+      G.particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
+        life:0.5, maxLife:0.5, color:'#ffd84a', r:3, type:'float'});
+    }
+  } else if(type==='build'){
+    for(let i=0;i<10;i++){
+      const a=Math.random()*Math.PI*2, sp=15+Math.random()*40;
+      G.particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-30,
+        life:0.7, maxLife:0.7, color:'#c8b99a', r:2+Math.random()*2, type:'dust'});
+    }
+  }
+}
+
+function stepParticles(dt){
+  if(!G.particles) return;
+  for(const p of G.particles){
+    p.x += p.vx*dt; p.y += p.vy*dt;
+    if(p.type==='spark'){ p.vy += 120*dt; }   // gravedad
+    if(p.type==='float'){ p.vy -= 20*dt; }     // flota
+    if(p.type==='dust') { p.vx*=0.92; p.vy*=0.92; }
+    p.life -= dt;
+  }
+  G.particles = G.particles.filter(p=>p.life>0);
+}
+
+function drawParticles(S){
+  if(!S.particles) return;
+  for(const p of S.particles){
+    if(p.x<cam.x-10||p.x>cam.x+view.w+10||p.y<cam.y-10||p.y>cam.y+view.h+10) continue;
+    ctx.globalAlpha = clamp(p.life/p.maxLife, 0, 1);
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x-cam.x, p.y-cam.y, p.r, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ============================================================
+//  AUDIO PROCEDURAL — Web Audio API (sin archivos, puro código)
+//  Inspirado en el event system de openage para audio triggers
+// ============================================================
+const SFX = {
+  ctx: null,
+  init(){ try{ this.ctx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} },
+  resume(){ if(this.ctx && this.ctx.state==='suspended') this.ctx.resume(); },
+
+  play(type){
+    if(!this.ctx) return;
+    const ac=this.ctx, now=ac.currentTime;
+    const osc=ac.createOscillator(), gain=ac.createGain();
+    osc.connect(gain); gain.connect(ac.destination);
+
+    if(type==='hit'){
+      osc.type='sawtooth'; osc.frequency.setValueAtTime(220,now);
+      osc.frequency.exponentialRampToValueAtTime(80,now+0.08);
+      gain.gain.setValueAtTime(0.18,now); gain.gain.exponentialRampToValueAtTime(0.001,now+0.12);
+      osc.start(now); osc.stop(now+0.12);
+    } else if(type==='death'){
+      osc.type='sawtooth'; osc.frequency.setValueAtTime(300,now);
+      osc.frequency.exponentialRampToValueAtTime(40,now+0.35);
+      gain.gain.setValueAtTime(0.22,now); gain.gain.exponentialRampToValueAtTime(0.001,now+0.35);
+      osc.start(now); osc.stop(now+0.35);
+    } else if(type==='gold'){
+      osc.type='sine'; osc.frequency.setValueAtTime(880,now);
+      osc.frequency.setValueAtTime(1100,now+0.05);
+      gain.gain.setValueAtTime(0.12,now); gain.gain.exponentialRampToValueAtTime(0.001,now+0.18);
+      osc.start(now); osc.stop(now+0.18);
+    } else if(type==='build'){
+      osc.type='square'; osc.frequency.setValueAtTime(160,now);
+      osc.frequency.exponentialRampToValueAtTime(260,now+0.12);
+      gain.gain.setValueAtTime(0.14,now); gain.gain.exponentialRampToValueAtTime(0.001,now+0.2);
+      osc.start(now); osc.stop(now+0.2);
+    } else if(type==='train'){
+      ['sine','sine'].forEach((t,i)=>{
+        const o=ac.createOscillator(), g=ac.createGain();
+        o.connect(g); g.connect(ac.destination);
+        o.type=t; o.frequency.setValueAtTime(520+i*130,now+i*0.08);
+        g.gain.setValueAtTime(0.1,now+i*0.08); g.gain.exponentialRampToValueAtTime(0.001,now+i*0.08+0.15);
+        o.start(now+i*0.08); o.stop(now+i*0.08+0.15);
+      });
+      return;
+    } else if(type==='victory'){
+      [523,659,784,1047].forEach((f,i)=>{
+        const o=ac.createOscillator(), g=ac.createGain();
+        o.connect(g); g.connect(ac.destination);
+        o.type='sine'; o.frequency.setValueAtTime(f,now+i*0.12);
+        g.gain.setValueAtTime(0.15,now+i*0.12); g.gain.exponentialRampToValueAtTime(0.001,now+i*0.12+0.22);
+        o.start(now+i*0.12); o.stop(now+i*0.12+0.25);
+      });
+      return;
+    } else if(type==='defeat'){
+      [784,659,523,392].forEach((f,i)=>{
+        const o=ac.createOscillator(), g=ac.createGain();
+        o.connect(g); g.connect(ac.destination);
+        o.type='sine'; o.frequency.setValueAtTime(f,now+i*0.15);
+        g.gain.setValueAtTime(0.14,now+i*0.15); g.gain.exponentialRampToValueAtTime(0.001,now+i*0.15+0.25);
+        o.start(now+i*0.15); o.stop(now+i*0.15+0.28);
+      });
+      return;
+    } else if(type==='cheat'){
+      [440,554,659,880,1108].forEach((f,i)=>{
+        const o=ac.createOscillator(), g=ac.createGain();
+        o.connect(g); g.connect(ac.destination);
+        o.type='triangle'; o.frequency.setValueAtTime(f,now+i*0.07);
+        g.gain.setValueAtTime(0.13,now+i*0.07); g.gain.exponentialRampToValueAtTime(0.001,now+i*0.07+0.12);
+        o.start(now+i*0.07); o.stop(now+i*0.07+0.15);
+      });
+      return;
+    }
+  },
+};
+
+// ============================================================
 //  FLOW FIELD PATHFINDING — inspirado en openage / Emerson
 //  Grid → Sectores → CostField → IntegrationField → FlowField
 // ============================================================
@@ -307,10 +567,11 @@ const FF = {
     return { x: (cx + 0.5) * this.CELL, y: (cy + 0.5) * this.CELL };
   },
 
-  // Marca celdas bloqueadas según edificios actuales
+  // Marca celdas bloqueadas según edificios + terreno
   rebuildCost() {
     this.cost.fill(1);
     if (!G) return;
+    TERRAIN.applyToFF();  // terreno primero
     for (const e of G.ents) {
       if (!e.building || !e.constructed) continue;
       const r = DEFS[e.kind].r + 4;
@@ -588,9 +849,15 @@ function step(dt){
   if(G.winner) return;
   G.time += dt; G.tick++;
 
-  // Reconstruye cost field cada 3s o cuando cambia algo
+  // Reconstruye cost field cada 3s
   ffRebuildT -= dt;
   if (ffRebuildT <= 0) { FF.rebuildCost(); ffRebuildT = 3; }
+
+  // Spatial hash cada tick (barato, O(n))
+  SH.rebuild(G.ents);
+
+  // Partículas
+  stepParticles(dt);
 
   // Edificios: producción y defensa
   for(const e of G.ents){
@@ -603,6 +870,7 @@ function step(dt){
           const it=e.queue.shift();
           const sp=spawnNear(e, it.unit);
           if(sp){ sp.order={type:'move'}; sp.tx=e.rallyX; sp.ty=e.rallyY; sp.moving=true; }
+          SFX.play('train'); spawnParticles(e.x, e.y+DEFS[e.kind].r, 'build');
         }
       }
       // torres y castillo disparan
@@ -714,6 +982,7 @@ function stepUnit(e, dt){
       if(!drop){ e.moving=false; return; }
       if(dist(e.x,e.y,drop.x,drop.y) <= DEFS.castle.r+14){
         G.res[e.side][e.carryType==='gold'?'g':'w'] += e.carry;
+        spawnParticles(e.x,e.y,'gold'); SFX.play('gold');
         e.carry=0; e.carryType=null;
       } else moveToward(e, drop.x, drop.y, dt);
       return;
@@ -737,7 +1006,8 @@ function stepUnit(e, dt){
       e.moving=false;
       f.bp += dt*0.16;                  // ~6s con 1 aldeano
       f.hp = Math.max(f.hp, Math.round(f.maxHp*Math.min(1,f.bp)));
-      if(f.bp>=1){ f.bp=1; f.constructed=true; f.hp=f.maxHp; e.order=null; recalcPop(); }
+      if(f.bp>=1){ f.bp=1; f.constructed=true; f.hp=f.maxHp; e.order=null; recalcPop();
+        spawnParticles(f.x, f.y, 'build'); SFX.play('build'); FF.cache.clear(); }
     } else moveToward(e, f.x, f.y, dt);
     return;
   }
@@ -795,8 +1065,10 @@ function moveToward(e, tx, ty, dt){
   const vm = Math.hypot(vx, vy);
   if (vm > 0) { vx /= vm; vy /= vm; }
 
-  e.x += vx * Math.min(sp, dd);
-  e.y += vy * Math.min(sp, dd);
+  // Factor de velocidad según terreno
+  const tf = TERRAIN.speedFactor(e.x, e.y);
+  e.x += vx * Math.min(sp * tf, dd);
+  e.y += vy * Math.min(sp * tf, dd);
   e.x = clamp(e.x, 8, MAP_W - 8);
   e.y = clamp(e.y, 8, MAP_H - 8);
   e.moving = true;
@@ -811,7 +1083,13 @@ function shoot(from, tgt, dmg, fromBuilding){
 function damage(t, amount, fromSide){
   if(t.hp<=0) return;
   t.hp -= amount;
-  // contraataque: villager o militar reacciona
+  spawnParticles(t.x, t.y, 'hit');
+  if(mode!=='client') SFX.play('hit');
+  if(t.hp<=0){
+    spawnParticles(t.x, t.y, 'death');
+    if(mode!=='client') SFX.play('death');
+  }
+  // contraataque
   if(t.hp>0 && !t.building && !entById(t.targetId)){
     const a=nearestEnemy(t.side,t.x,t.y, DEFS[t.kind].sight);
     if(a && t.kind!=='villager') t.targetId=a.id;
@@ -819,24 +1097,25 @@ function damage(t, amount, fromSide){
 }
 
 function separate(){
-  const arr=G.ents;
-  for(let i=0;i<arr.length;i++){
-    const a=arr[i]; if(a.building) continue;
-    for(let j=i+1;j<arr.length;j++){
-      const b=arr[j]; if(b.building) continue;
-      const dx=b.x-a.x, dy=b.y-a.y; let dd=Math.hypot(dx,dy);
+  // Usa Spatial Hash para O(n) en vez de O(n²)
+  for(const a of G.ents){
+    if(a.building) continue;
+    const neighbors = SH.query(a.x, a.y, 50);
+    for(const b of neighbors){
+      if(b===a || b.building) continue;
+      const dx=b.x-a.x, dy=b.y-a.y; const dd=Math.hypot(dx,dy);
       const min=DEFS[a.kind].r+DEFS[b.kind].r;
       if(dd>0.001 && dd<min){
-        const push=(min-dd)/2;
-        const ux=dx/dd, uy=dy/dd;
+        const push=(min-dd)/2, ux=dx/dd, uy=dy/dd;
         a.x-=ux*push; a.y-=uy*push;
         b.x+=ux*push; b.y+=uy*push;
       }
     }
-    // empuje fuera de edificios
-    for(const e of arr){
+    // empuje fuera de edificios cercanos (spatial hash también)
+    const nearBuildings = SH.query(a.x, a.y, 60);
+    for(const e of nearBuildings){
       if(!e.building||!e.constructed) continue;
-      const dx=a.x-e.x, dy=a.y-e.y; let dd=Math.hypot(dx,dy);
+      const dx=a.x-e.x, dy=a.y-e.y; const dd=Math.hypot(dx,dy);
       const min=DEFS[a.kind].r+DEFS[e.kind].r;
       if(dd>0.001 && dd<min){ const p=(min-dd); a.x+=dx/dd*p; a.y+=dy/dd*p; }
     }
@@ -1049,6 +1328,9 @@ function render(){
 
   ctx.restore();
 
+  // Partículas (en coordenadas pantalla)
+  drawParticles(S);
+
   // Niebla de guerra encima del mapa
   if(fogEnabled) FOG.draw();
 
@@ -1095,6 +1377,26 @@ function drawGround(){
       }
     }
   }
+  // Terreno especial (barro, agua, caminos) encima del pasto
+  if(TERRAIN.tiles){
+    const T=TERRAIN.TILE;
+    const tx0=Math.floor(cam.x/T), ty0=Math.floor(cam.y/T);
+    const tx1=Math.ceil((cam.x+view.w)/T), ty1=Math.ceil((cam.y+view.h)/T);
+    for(let ty=ty0;ty<=ty1;ty++) for(let tx=tx0;tx<=tx1;tx++){
+      if(tx<0||tx>=TERRAIN.COLS||ty<0||ty>=TERRAIN.ROWS) continue;
+      const biome=TERRAIN.biomes[ty*TERRAIN.COLS+tx];
+      if(biome===0) continue;
+      const wx=tx*T, wy=ty*T;
+      if(biome===1){ ctx.fillStyle='rgba(80,55,30,0.48)'; } // barro
+      else if(biome===2){ ctx.fillStyle='rgba(30,80,140,0.55)'; } // agua
+      else if(biome===3){ ctx.fillStyle='rgba(160,140,90,0.38)'; } // camino
+      ctx.fillRect(wx,wy,T,T);
+      // borde sutil
+      ctx.strokeStyle='rgba(0,0,0,0.12)'; ctx.lineWidth=1;
+      ctx.strokeRect(wx,wy,T,T);
+    }
+  }
+
   // viñeta de borde del mapa
   ctx.strokeStyle='rgba(0,0,0,0.5)'; ctx.lineWidth=10;
   ctx.strokeRect(0,0,MAP_W,MAP_H);
@@ -1452,6 +1754,7 @@ function tryCheat(){
   king.atkMul=1.6; king.spdMul=1.35; king.buffT=8;
   G.res.red.g+=150; G.res.red.w+=150;
   cheatReadyAt=now+45000;
+  SFX.play('cheat');
   toast('⚡ ¡RUGIDO DEL REY LEÓN!  +150🪙 +150🪵 · Rey curado y enfurecido (8s)');
 }
 
@@ -1474,6 +1777,7 @@ window.addEventListener('keydown', e=>{
   }
 });
 window.addEventListener('keyup', e=>{ keys[e.key.toLowerCase()]=false; });
+window.addEventListener('pointerdown', ()=>SFX.resume(), {once:false});
 
 if(canvas){
   canvas.addEventListener('mousemove', e=>{
@@ -1689,6 +1993,7 @@ function onSnapshot(s){
 // ---------- Arranque / menús ----------
 function startGame(opts){
   mode=opts.mode; mySide=opts.side; enemySide = mySide==='red'?'blue':'red';
+  SFX.init(); SFX.resume();
   resize();
   if(mode==='client'){
     // el cliente no simula; espera snapshots
@@ -1712,6 +2017,7 @@ function showEnd(winner){
   if(document.getElementById('endScreen').style.display==='flex') return;
   running=false;
   const won = winner===mySide;
+  SFX.play(won?'victory':'defeat');
   document.getElementById('endTitle').textContent = won?'¡VICTORIA!':'DERROTA';
   document.getElementById('endTitle').style.color = won?'#7CFC00':'#ff5555';
   document.getElementById('endSub').textContent = won
