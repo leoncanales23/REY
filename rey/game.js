@@ -2221,25 +2221,29 @@ window.REINOS = {
     const code = Net.makeCode();
     _currentRoomCode = code;
     _inviteUrl = location.origin + location.pathname + '?sala=' + code;
-
-    // Muestra panel de sala
-    document.getElementById('hostPanel').style.display = 'block';
-    document.getElementById('roomCode').textContent = code;
-    document.getElementById('inviteLink').textContent = _inviteUrl;
-
-    // Actualiza URL del browser (sin recargar)
     history.replaceState(null, '', '?sala=' + code);
 
     Net.onStatus = (t) => {
-      setText('netStatus', t);
+      setText('overlayStatus', t);
       updateRoomBadge(code, t);
     };
     Net.onPeer = () => {
-      setText('netStatus', '✅ ¡Nelson conectado!');
+      setText('overlayStatus', '✅ ¡Nelson conectado!');
       updateRoomBadge(code, '✅ Nelson online');
+      SFX.play('train');
     };
     Net.host(code);
     startGame({mode:'host', side:'red'});
+
+    // Populate and show overlay (outside menu, on top of canvas)
+    setText('overlayCode', code);
+    setText('overlayLink', _inviteUrl);
+    const ov = document.getElementById('inviteOverlay');
+    const shareBtn = document.getElementById('overlayShareBtn');
+    const copyBtn  = document.getElementById('overlayCopyBtn');
+    if(shareBtn) shareBtn.style.display = navigator.share ? 'flex' : 'none';
+    if(copyBtn)  copyBtn.style.display  = navigator.share ? 'none' : 'flex';
+    if(ov) ov.style.display = 'flex';
   },
 
   joinGame(code){
@@ -2273,6 +2277,11 @@ window.REINOS = {
     if(navigator.share){
       navigator.share({ title:'REINOS — te invito a jugar', url: _inviteUrl });
     }
+  },
+
+  closeInvite(){
+    const ov = document.getElementById('inviteOverlay');
+    if(ov) ov.style.display = 'none';
   },
 
   goHome(){
