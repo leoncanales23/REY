@@ -97,6 +97,7 @@ function addNode(type, x, y, amount) {
 function initMap() {
   G = freshState();
   FF.init();
+  FOG.init();
 
   // Castillos
   const RX = 320, RY = MAP_H/2;
@@ -407,6 +408,177 @@ const FF = {
     return { dx: flow[i * 2], dy: flow[i * 2 + 1] };
   },
 };
+
+// ============================================================
+//  LOS — Line of Sight en el Integration Field
+//  Celdas con visión directa al destino reciben coste 0 (van directo)
+// ============================================================
+FF.buildIntegrationWithLOS = function(dcx, dcy) {
+  const N = this.COLS * this.ROWS;
+  const inte = new Float32Array(N).fill(Infinity);
+  const los  = new Uint8Array(N);       // 1 = tiene LOS al destino
+  const C = this.COLS, R = this.ROWS;
+  const di = this.idx(dcx, dcy);
+  inte[di] = 0; los[di] = 1;
+
+  // Rasteriza línea de Bresenham entre celda y destino para marcar LOS
+  const markLOS = (cx, cy) => {
+    let x0=cx, y0=cy, x1=dcx, y1=dcy;
+    const dx=Math.abs(x1-x0), dy=Math.abs(y1-y0);
+    const sx=x0<x1?1:-1, sy=y0<y1?1:-1;
+    let err=dx-dy;
+    while(!(x0===x1&&y0===y1)){
+      const ii=y0*C+x0;
+      if(this.cost[ii]===255) return false;
+      const e2=2*err;
+      if(e2>-dy){err-=dy;x0+=sx;}
+      if(e2< dx){err+=dx;y0+=sy;}
+    }
+    return true;
+  };
+
+  const queue = [di];
+  let head = 0;
+  while (head < queue.length) {
+    const i = queue[head++];
+    const cy = (i/C)|0, cx = i%C;
+    const cur = inte[i];
+    const neighbors = [
+      cx>0?i-1:-1, cx<C-1?i+1:-1, cy>0?i-C:-1, cy<R-1?i+C:-1,
+      (cx>0&&cy>0)?i-C-1:-1, (cx<C-1&&cy>0)?i-C+1:-1,
+      (cx>0&&cy<R-1)?i+C-1:-1, (cx<C-1&&cy<R-1)?i+C+1:-1,
+    ];
+    const costs=[1,1,1,1,1.41,1.41,1.41,1.41];
+    for(let n=0;n<8;n++){
+      const ni=neighbors[n]; if(ni<0) continue;
+      if(this.cost[ni]===255) continue;
+      const ncy=(ni/C)|0, ncx=ni%C;
+      let nc;
+      if(markLOS(ncx,ncy)){ nc=0; los[ni]=1; }
+      else { nc=cur+this.cost[ni]*costs[n]; }
+      if(nc<inte[ni]){ inte[ni]=nc; queue.push(ni); }
+    }
+  }
+  return {inte, los};
+};
+
+// Sobreescribe getFlow para usar LOS
+FF.getFlow = function(wx, wy) {
+  const {cx,cy} = this.worldToCell(wx,wy);
+  const key = `${cx},${cy}`;
+  if(this.cache.has(key)) return {flow:this.cache.get(key),cx,cy};
+  const {inte} = this.buildIntegrationWithLOS(cx,cy);
+  const flow = this.buildFlow(inte);
+  if(this.cache.size>=this.CACHE_MAX) this.cache.delete(this.cache.keys().next().value);
+  this.cache.set(key,flow);
+  return {flow,cx,cy};
+};
+
+// ============================================================
+//  FORMACIONES — openage-style: distribuye unidades en rejilla
+//  cuando se ordenan mover en grupo
+// ============================================================
+function computeFormationPositions(units, tx, ty) {
+  const n = units.length;
+  if (n === 1) return [{x:tx, y:ty}];
+  const cols  = Math.ceil(Math.sqrt(n));
+  const rows  = Math.ceil(n / cols);
+  const gap   = 28;  // separación entre slots
+  const W     = (cols - 1) * gap;
+  const H     = (rows - 1) * gap;
+  const positions = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (positions.length >= n) break;
+      positions.push({
+        x: clamp(tx - W/2 + c*gap, 20, MAP_W-20),
+        y: clamp(ty - H/2 + r*gap, 20, MAP_H-20),
+      });
+    }
+  }
+  // Asigna el slot más cercano a cada unidad (greedy)
+  const assigned = [];
+  const usedSlots = new Set();
+  for (const u of units) {
+    let best = -1, bd = Infinity;
+    for (let i = 0; i < positions.length; i++) {
+      if (usedSlots.has(i)) continue;
+      const d = dist2(u.x, u.y, positions[i].x, positions[i].y);
+      if (d < bd) { bd = d; best = i; }
+    }
+    usedSlots.add(best);
+    assigned.push({unit:u, pos:positions[best]});
+  }
+  return assigned;
+}
+
+// ============================================================
+//  NIEBLA DE GUERRA — Fog of War
+//  0=oculto  1=explorado(gris)  2=visible
+// ============================================================
+const FOG = {
+  CELL: 48,
+  COLS: 0, ROWS: 0,
+  vis: null,   // Uint8Array actual
+  exp: null,   // Uint8Array explorado (persiste)
+
+  init() {
+    this.COLS = Math.ceil(MAP_W / this.CELL);
+    this.ROWS = Math.ceil(MAP_H / this.CELL);
+    const N = this.COLS * this.ROWS;
+    this.vis = new Uint8Array(N);
+    this.exp = new Uint8Array(N);
+  },
+
+  update(side) {
+    if (!G) return;
+    this.vis.fill(0);
+    for (const e of G.ents) {
+      if (e.side !== side) continue;
+      const sight = DEFS[e.kind].sight || 80;
+      const cx = Math.floor(e.x / this.CELL);
+      const cy = Math.floor(e.y / this.CELL);
+      const cr = Math.ceil(sight / this.CELL);
+      const r2 = (sight / this.CELL) ** 2;
+      for (let dy = -cr; dy <= cr; dy++) {
+        for (let dx = -cr; dx <= cr; dx++) {
+          if (dx*dx + dy*dy > r2) continue;
+          const nx = cx+dx, ny = cy+dy;
+          if (nx<0||nx>=this.COLS||ny<0||ny>=this.ROWS) continue;
+          const i = ny*this.COLS+nx;
+          this.vis[i] = 2;
+          this.exp[i] = 1;
+        }
+      }
+    }
+  },
+
+  // Retorna 0/1/2 para una posición mundo
+  at(wx, wy) {
+    const cx = clamp(Math.floor(wx/this.CELL),0,this.COLS-1);
+    const cy = clamp(Math.floor(wy/this.CELL),0,this.ROWS-1);
+    const i  = cy*this.COLS+cx;
+    return this.vis[i] || this.exp[i];
+  },
+
+  // Dibuja overlay de niebla sobre el mapa (después de restaurar ctx)
+  draw() {
+    const C=this.COLS, CELL=this.CELL;
+    for (let cy=0; cy<this.ROWS; cy++) {
+      for (let cx=0; cx<C; cx++) {
+        const wx=cx*CELL-cam.x, wy=cy*CELL-cam.y;
+        if(wx>view.w||wy>view.h||wx+CELL<0||wy+CELL<0) continue;
+        const v = this.vis[cy*C+cx];
+        const e = this.exp[cy*C+cx];
+        if (v===2) continue;
+        ctx.fillStyle = e ? 'rgba(0,0,0,0.48)' : 'rgba(0,0,0,0.82)';
+        ctx.fillRect(wx, wy, CELL+1, CELL+1);
+      }
+    }
+  },
+};
+
+let fogEnabled = true; // toggle con tecla G
 
 // Rebuildea cost field cada 3s (edificios cambian poco)
 let ffRebuildT = 0;
@@ -832,27 +1004,33 @@ function render(){
   const S=renderState(); if(!S) return;
   ctx.clearRect(0,0,view.w,view.h);
 
+  // Actualiza fog de guerra
+  if(fogEnabled) FOG.update(mySide);
+
   ctx.save();
   ctx.translate(-cam.x,-cam.y);
 
   // terreno (pasto + tierra)
   drawGround();
 
-  // nodos (árboles / oro)
+  // nodos (árboles / oro) — solo si visibles o explorados
   for(const n of S.nodes){
     if(n.x<cam.x-50||n.x>cam.x+view.w+50||n.y<cam.y-50||n.y>cam.y+view.h+50) continue;
+    if(fogEnabled && FOG.at(n.x,n.y)===0) continue;
     if(n.type==='gold') drawGold(n); else drawTree(n);
   }
 
-  // edificios y unidades
+  // edificios y unidades — enemigos ocultos en fog no se ven
   const ents=S.ents.slice().sort((a,b)=>a.y-b.y);
   for(const e of ents){
     if(e.x<cam.x-60||e.x>cam.x+view.w+60||e.y<cam.y-60||e.y>cam.y+view.h+60) continue;
+    if(fogEnabled && e.side!==mySide && FOG.at(e.x,e.y)<2) continue;
     drawEntity(e);
   }
 
-  // proyectiles (flechas/piedras)
+  // proyectiles
   for(const p of (S.projectiles||[])){
+    if(fogEnabled && FOG.at(p.x,p.y)<2) continue;
     ctx.fillStyle='rgba(0,0,0,0.35)'; circle(p.x+1,p.y+2,2.6);
     ctx.fillStyle='#ffe27a'; circle(p.x,p.y,2.6);
     ctx.fillStyle='#fff7d6'; circle(p.x-0.6,p.y-0.6,1.1);
@@ -870,6 +1048,9 @@ function render(){
   }
 
   ctx.restore();
+
+  // Niebla de guerra encima del mapa
+  if(fogEnabled) FOG.draw();
 
   drawFlowFieldDebug();
 
@@ -1284,6 +1465,7 @@ window.addEventListener('keydown', e=>{
   keys[e.key.toLowerCase()]=true;
   if(e.key==='Escape'){ buildKind=null; }
   if(e.key.toLowerCase()==='f' && !inField){ showFlowField=!showFlowField; }
+  if(e.key.toLowerCase()==='g' && !inField){ fogEnabled=!fogEnabled; toast(fogEnabled?'🌫️ Niebla de guerra ON':'☀️ Niebla de guerra OFF'); }
   // hotkeys de construcción con aldeano seleccionado
   if(selHasVillager()){
     if(e.key.toLowerCase()==='q') setBuild('house');
@@ -1380,7 +1562,18 @@ function rightClick(){
 
   if(tgt){ issue({type:'attack', ids:unitIds, targetId:tgt.id}); }
   else if(node && selHasVillager()){ const vIds=unitIds.filter(id=>{const e=entById2(S,id);return e&&e.kind==='villager';}); issue({type:'gather', ids:vIds, nodeId:node.id}); }
-  else { issue({type:'move', ids:unitIds, x:mouse.wx, y:mouse.wy}); }
+  else {
+    // Formación: distribuye unidades en rejilla alrededor del destino
+    if(unitIds.length > 1){
+      const units = unitIds.map(id=>entById2(S,id)).filter(Boolean);
+      const assigned = computeFormationPositions(units, mouse.wx, mouse.wy);
+      for(const {unit, pos} of assigned){
+        issue({type:'move', ids:[unit.id], x:pos.x, y:pos.y});
+      }
+    } else {
+      issue({type:'move', ids:unitIds, x:mouse.wx, y:mouse.wy});
+    }
+  }
 }
 function entById2(S,id){ for(const e of S.ents) if(e.id===id) return e; return null; }
 
