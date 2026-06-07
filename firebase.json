@@ -1,18 +1,10 @@
 {
   "hosting": {
     "public": ".",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**",
-      "README.md",
-      "package.json"
-    ],
-    "headers": [
-      {
-        "source": "**/*.@(js|css|html)",
-        "headers": [{ "key": "Cache-Control", "value": "max-age=300" }]
-      }
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      { "source": "/rey", "destination": "/rey/index.html" },
+      { "source": "/rey/**", "destination": "/rey/index.html" }
     ]
   }
 }
