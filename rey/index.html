@@ -64,13 +64,13 @@
     <div id="cmds"></div>
   </div>
 
-  <div class="controls">
-    WASD / flechas / bordes: mover cámara<br>
-    Click izq: seleccionar · arrastrar: caja<br>
-    Click der: mover / atacar / recolectar<br>
-    Aldeano → Q casa · E cuartel · R torre<br>
-    G: niebla de guerra · F: debug flow field
-  </div>
+  <div class="controls" id="ctrlHint"></div>
+  <script>
+    document.getElementById('ctrlHint').innerHTML =
+      ('ontouchstart' in window || navigator.maxTouchPoints > 0)
+      ? 'TAP: seleccionar · TAP en suelo: mover/atacar<br>MANTÉN: mover/atacar (ripple dorado)<br>ARRASTRA: mover cámara · 2 dedos: pan'
+      : 'WASD/flechas/bordes: cámara · Click izq: seleccionar<br>Click der: mover/atacar · Aldeano → Q E R construir<br>G: niebla · F: debug flow field';
+  </script>
 
   <!-- ====== FIN ====== -->
   <div id="endScreen">

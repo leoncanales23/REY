@@ -1268,7 +1268,7 @@ function loop(ts){
 }
 
 function edgeScroll(dt){
-  const sp=620*dt, m=24, a=mouse.active;
+  const sp=620*dt, m=24, a=mouse.active && !isMobile;
   if(keys['arrowleft']||keys['a']||(a&&mouse.x>=0&&mouse.x<m)) cam.x-=sp;
   if(keys['arrowright']||keys['d']||(a&&mouse.x>view.w-m)) cam.x+=sp;
   if(keys['arrowup']||keys['w']||(a&&mouse.y>=0&&mouse.y<m)) cam.y-=sp;
@@ -1346,6 +1346,9 @@ function render(){
   }
 
   drawMinimap(S);
+
+  // Ripples de long-press (móvil)
+  if(isMobile) drawRipples();
 }
 
 // hash determinista 0..1 (estable al hacer scroll)
@@ -1779,38 +1782,207 @@ window.addEventListener('keydown', e=>{
 window.addEventListener('keyup', e=>{ keys[e.key.toLowerCase()]=false; });
 window.addEventListener('pointerdown', ()=>SFX.resume(), {once:false});
 
-if(canvas){
+// ── Detecta móvil ────────────────────────────────────────────
+const isMobile = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+
+// ── Ripple visual para long-press ────────────────────────────
+const ripples = [];
+function showRipple(x, y){
+  ripples.push({x, y, r:0, maxR:36, life:1});
+}
+function drawRipples(){
+  for(const rp of ripples){
+    rp.r += 2.2; rp.life -= 0.06;
+    ctx.strokeStyle=`rgba(255,220,80,${rp.life.toFixed(2)})`;
+    ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(rp.x, rp.y, rp.r, 0, Math.PI*2); ctx.stroke();
+  }
+  ripples.splice(0, ripples.length, ...ripples.filter(r=>r.life>0));
+}
+
+// ── MOUSE (desktop) ──────────────────────────────────────────
+if(canvas && !isMobile){
   canvas.addEventListener('mousemove', e=>{
     const r=canvas.getBoundingClientRect();
     mouse.active=true;
     mouse.x=e.clientX-r.left; mouse.y=e.clientY-r.top;
     const w=worldFromScreen(mouse.x,mouse.y); mouse.wx=w.x; mouse.wy=w.y;
-    if(drag){ /* actualiza al render */ }
   });
-
   canvas.addEventListener('mousedown', e=>{
     const r=canvas.getBoundingClientRect();
     mouse.x=e.clientX-r.left; mouse.y=e.clientY-r.top;
-    // ¿clic en minimapa?
     if(mini.box && inMini(mouse.x,mouse.y)){ moveCamMini(mouse.x,mouse.y); return; }
-
-    if(e.button===0){ // izquierdo
+    if(e.button===0){
       if(buildKind){ placeBuilding(); return; }
       drag={x0:mouse.x, y0:mouse.y};
-    } else if(e.button===2){ // derecho
-      rightClick();
-    }
+    } else if(e.button===2){ rightClick(); }
   });
-
   canvas.addEventListener('mouseup', e=>{
     if(e.button===0 && drag){
-      const moved = Math.abs(mouse.x-drag.x0)+Math.abs(mouse.y-drag.y0);
-      if(moved<6) clickSelect();
-      else boxSelect();
+      const moved=Math.abs(mouse.x-drag.x0)+Math.abs(mouse.y-drag.y0);
+      if(moved<6) clickSelect(); else boxSelect();
       drag=null;
     }
   });
   canvas.addEventListener('contextmenu', e=>e.preventDefault());
+}
+
+// ── TOUCH (móvil) ────────────────────────────────────────────
+// Esquema:
+//   Tap rápido (<320ms, sin mover) →
+//     · con unidades seleccionadas y tap en suelo/enemigo → rightClick (mover/atacar)
+//     · en unidad propia → clickSelect
+//     · en vacío sin selección → clickSelect (deseleccionar)
+//   Long-press (≥380ms, sin mover) → rightClick siempre (mover/atacar/recolectar)
+//   Arrastrar 1 dedo → pan de cámara
+//   2 dedos → pan de cámara con ambos
+if(canvas && isMobile){
+  const LONG_MS  = 380;   // ms para long-press
+  const MOVE_THR = 12;    // px de movimiento que cancela tap/long-press
+  const TAP_R    = 22;    // radio de selección táctil (más grande que mouse)
+
+  let T = {               // estado de toque principal
+    active:false, id:-1,
+    sx:0, sy:0,           // posición inicio
+    lx:0, ly:0,           // posición actual
+    t0:0,                 // timestamp inicio
+    panning:false,
+    timer:null,
+  };
+  let T2 = {active:false, id:-1, lx:0, ly:0}; // segundo dedo
+
+  function setMouse(sx, sy){
+    mouse.x=sx; mouse.y=sy; mouse.active=true;
+    const w=worldFromScreen(sx,sy); mouse.wx=w.x; mouse.wy=w.y;
+  }
+  function cancelLong(){ clearTimeout(T.timer); T.timer=null; }
+
+  canvas.addEventListener('touchstart', e=>{
+    e.preventDefault(); SFX.resume();
+
+    // Segundo dedo → pan 2 dedos
+    if(e.touches.length===2){
+      cancelLong();
+      T.panning=true;
+      const t2=e.touches[1];
+      const r=canvas.getBoundingClientRect();
+      T2.active=true; T2.id=t2.identifier;
+      T2.lx=t2.clientX-r.left; T2.ly=t2.clientY-r.top;
+      return;
+    }
+
+    const t=e.touches[0];
+    const r=canvas.getBoundingClientRect();
+    const sx=t.clientX-r.left, sy=t.clientY-r.top;
+
+    T.active=true; T.id=t.identifier; T.panning=false;
+    T.sx=T.lx=sx; T.sy=T.ly=sy; T.t0=Date.now();
+    setMouse(sx,sy);
+
+    // ¿minimapa?
+    if(mini.box && inMini(sx,sy)){ moveCamMini(sx,sy); T.active=false; return; }
+
+    // Long-press: dispara rightClick con ripple visual
+    T.timer=setTimeout(()=>{
+      if(!T.active||T.panning) return;
+      showRipple(T.lx, T.ly);
+      setMouse(T.lx, T.ly);
+      rightClick();
+      T.active=false;
+    }, LONG_MS);
+
+  },{passive:false});
+
+  canvas.addEventListener('touchmove', e=>{
+    e.preventDefault();
+
+    // Pan con 2 dedos
+    if(e.touches.length===2 && T2.active){
+      const r=canvas.getBoundingClientRect();
+      const t2=[...e.touches].find(t=>t.identifier===T2.id);
+      if(t2){
+        const nx=t2.clientX-r.left, ny=t2.clientY-r.top;
+        // usa la media de los dos dedos para pan más suave
+        const t1=[...e.touches].find(t=>t.identifier===T.id);
+        if(t1){
+          const nx1=t1.clientX-r.left, ny1=t1.clientY-r.top;
+          const cx=(nx+nx1)/2, cy=(ny+ny1)/2;
+          const px=(T2.lx+T.lx)/2, py=(T2.ly+T.ly)/2;
+          cam.x=clamp(cam.x-(cx-px),0,Math.max(0,MAP_W-view.w));
+          cam.y=clamp(cam.y-(cy-py),0,Math.max(0,MAP_H-view.h));
+        }
+        T2.lx=nx; T2.ly=ny;
+      }
+      return;
+    }
+
+    const t=[...e.touches].find(t=>t.identifier===T.id);
+    if(!t||!T.active) return;
+    const r=canvas.getBoundingClientRect();
+    const nx=t.clientX-r.left, ny=t.clientY-r.top;
+    const dx=nx-T.lx, dy=ny-T.ly;
+    const moved=Math.abs(nx-T.sx)+Math.abs(ny-T.sy);
+
+    if(moved>MOVE_THR){
+      cancelLong();
+      T.panning=true;
+      cam.x=clamp(cam.x-dx,0,Math.max(0,MAP_W-view.w));
+      cam.y=clamp(cam.y-dy,0,Math.max(0,MAP_H-view.h));
+    }
+    T.lx=nx; T.ly=ny;
+    setMouse(nx,ny);
+  },{passive:false});
+
+  canvas.addEventListener('touchend', e=>{
+    e.preventDefault(); cancelLong();
+    T2.active=false;
+
+    const elapsed=Date.now()-T.t0;
+    const moved=Math.abs(T.lx-T.sx)+Math.abs(T.ly-T.sy);
+    const wasTap=!T.panning && moved<MOVE_THR && elapsed<LONG_MS;
+    T.active=false; T.panning=false;
+
+    if(!wasTap) return;
+
+    setMouse(T.lx, T.ly);
+
+    // Modo construcción: tap = colocar edificio
+    if(buildKind){ placeBuilding(); return; }
+
+    // ¿Toca unidad propia?
+    const S=renderState();
+    let tappedOwn=false;
+    for(const ent of S.ents){
+      if(ent.side!==mySide) continue;
+      if(dist2(mouse.wx,mouse.wy,ent.x,ent.y)<(DEFS[ent.kind].r+TAP_R)**2){ tappedOwn=true; break; }
+    }
+
+    if(tappedOwn){
+      // Tap en unidad propia → seleccionar
+      clickSelectTouch(TAP_R);
+    } else if(sel.size>0){
+      // Tap en suelo/enemigo con selección → mover/atacar
+      rightClick();
+    } else {
+      // Tap en vacío sin selección → deseleccionar
+      sel.clear(); refreshPanel();
+    }
+  },{passive:false});
+
+  canvas.addEventListener('touchcancel', e=>{ cancelLong(); T.active=false; T2.active=false; },{passive:false});
+}
+
+// Versión táctil de clickSelect con radio más grande
+function clickSelectTouch(extraR=16){
+  const S=renderState(); sel.clear();
+  let pick=null, bd=Infinity;
+  for(const e of S.ents){
+    if(e.side!==mySide) continue;
+    const dd=dist2(mouse.wx,mouse.wy,e.x,e.y);
+    if(dd<(DEFS[e.kind].r+extraR)**2 && dd<bd){ bd=dd; pick=e; }
+  }
+  if(pick) sel.add(pick.id);
+  refreshPanel();
 }
 
 function inMini(x,y){ const b=mini.box; return b && x>=b.x0&&x<=b.x0+b.mw&&y>=b.y0&&y<=b.y0+b.mh; }
