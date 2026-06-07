@@ -2,6 +2,9 @@
    REINOS — Nelson vs León
    Motor RTS original (inspirado en el género, sin assets de terceros).
    Un solo archivo: simulación + IA + render + input.
+
+   Pathfinding: Flow Field inspirado en openage / Elijah Emerson
+   "Crowd Pathfinding and Steering Using Flow Field Tiles"
    ============================================================ */
 (() => {
 'use strict';
@@ -93,6 +96,7 @@ function addNode(type, x, y, amount) {
 // ---------- Inicialización de partida ----------
 function initMap() {
   G = freshState();
+  FF.init();
 
   // Castillos
   const RX = 320, RY = MAP_H/2;
@@ -273,10 +277,148 @@ function issue(cmd){
   else { applyCommand(cmd, mySide); }
 }
 
+// ============================================================
+//  FLOW FIELD PATHFINDING — inspirado en openage / Emerson
+//  Grid → Sectores → CostField → IntegrationField → FlowField
+// ============================================================
+const FF = {
+  CELL: 40,          // tamaño de celda en px
+  COLS: 0, ROWS: 0,  // inicializado en initFF()
+  cost: null,        // Uint8Array: coste por celda (1-254, 255=bloqueado)
+  cache: new Map(),  // caché de FlowFields por destino "cx,cy"
+  CACHE_MAX: 24,
+
+  init() {
+    this.COLS = Math.ceil(MAP_W / this.CELL);
+    this.ROWS = Math.ceil(MAP_H / this.CELL);
+    this.cost = new Uint8Array(this.COLS * this.ROWS).fill(1);
+    this.cache.clear();
+  },
+
+  idx(cx, cy) { return cy * this.COLS + cx; },
+  worldToCell(wx, wy) {
+    return {
+      cx: clamp(Math.floor(wx / this.CELL), 0, this.COLS - 1),
+      cy: clamp(Math.floor(wy / this.CELL), 0, this.ROWS - 1),
+    };
+  },
+  cellCenter(cx, cy) {
+    return { x: (cx + 0.5) * this.CELL, y: (cy + 0.5) * this.CELL };
+  },
+
+  // Marca celdas bloqueadas según edificios actuales
+  rebuildCost() {
+    this.cost.fill(1);
+    if (!G) return;
+    for (const e of G.ents) {
+      if (!e.building || !e.constructed) continue;
+      const r = DEFS[e.kind].r + 4;
+      const x0 = Math.floor((e.x - r) / this.CELL);
+      const y0 = Math.floor((e.y - r) / this.CELL);
+      const x1 = Math.ceil((e.x + r) / this.CELL);
+      const y1 = Math.ceil((e.y + r) / this.CELL);
+      for (let cy = y0; cy <= y1; cy++) {
+        for (let cx = x0; cx <= x1; cx++) {
+          if (cx >= 0 && cx < this.COLS && cy >= 0 && cy < this.ROWS)
+            this.cost[this.idx(cx, cy)] = 255;
+        }
+      }
+    }
+    this.cache.clear();
+  },
+
+  // Integration Field: BFS desde destino acumulando costos
+  buildIntegration(dcx, dcy) {
+    const N = this.COLS * this.ROWS;
+    const inte = new Float32Array(N).fill(Infinity);
+    const di = this.idx(dcx, dcy);
+    inte[di] = 0;
+    const queue = [di];
+    const C = this.COLS, R = this.ROWS;
+    let head = 0;
+    while (head < queue.length) {
+      const i = queue[head++];
+      const cy = (i / C) | 0, cx = i % C;
+      const cur = inte[i];
+      const neighbors = [
+        cx>0   ? i-1   : -1,
+        cx<C-1 ? i+1   : -1,
+        cy>0   ? i-C   : -1,
+        cy<R-1 ? i+C   : -1,
+        (cx>0 && cy>0)   ? i-C-1 : -1,
+        (cx<C-1 && cy>0) ? i-C+1 : -1,
+        (cx>0 && cy<R-1) ? i+C-1 : -1,
+        (cx<C-1 && cy<R-1) ? i+C+1 : -1,
+      ];
+      const costs = [1,1,1,1,1.41,1.41,1.41,1.41];
+      for (let n = 0; n < 8; n++) {
+        const ni = neighbors[n];
+        if (ni < 0) continue;
+        if (this.cost[ni] === 255) continue;
+        const nc = cur + this.cost[ni] * costs[n];
+        if (nc < inte[ni]) { inte[ni] = nc; queue.push(ni); }
+      }
+    }
+    return inte;
+  },
+
+  // Flow Field: vector por celda apuntando al vecino más barato
+  buildFlow(inte) {
+    const N = this.COLS * this.ROWS;
+    const flow = new Int8Array(N * 2); // [dx, dy] por celda, -1/0/1
+    const C = this.COLS, R = this.ROWS;
+    const DX = [-1,1,0,0,-1,1,-1,1];
+    const DY = [0,0,-1,1,-1,-1,1,1];
+    for (let i = 0; i < N; i++) {
+      if (this.cost[i] === 255) continue;
+      let best = Infinity, bdx = 0, bdy = 0;
+      const cy = (i / C) | 0, cx = i % C;
+      for (let d = 0; d < 8; d++) {
+        const nx = cx + DX[d], ny = cy + DY[d];
+        if (nx < 0 || nx >= C || ny < 0 || ny >= R) continue;
+        const ni = ny * C + nx;
+        if (inte[ni] < best) { best = inte[ni]; bdx = DX[d]; bdy = DY[d]; }
+      }
+      flow[i * 2]     = bdx;
+      flow[i * 2 + 1] = bdy;
+    }
+    return flow;
+  },
+
+  // Obtiene o genera FlowField cacheado para un destino
+  getFlow(wx, wy) {
+    const { cx, cy } = this.worldToCell(wx, wy);
+    const key = `${cx},${cy}`;
+    if (this.cache.has(key)) return { flow: this.cache.get(key), cx, cy };
+    const inte = this.buildIntegration(cx, cy);
+    const flow = this.buildFlow(inte);
+    if (this.cache.size >= this.CACHE_MAX) {
+      this.cache.delete(this.cache.keys().next().value);
+    }
+    this.cache.set(key, flow);
+    return { flow, cx, cy };
+  },
+
+  // Dirección de movimiento para una entidad en posición (wx,wy) hacia destino
+  direction(wx, wy, destWx, destWy) {
+    const { flow } = this.getFlow(destWx, destWy);
+    const { cx, cy } = this.worldToCell(wx, wy);
+    const i = this.idx(cx, cy);
+    return { dx: flow[i * 2], dy: flow[i * 2 + 1] };
+  },
+};
+
+// Rebuildea cost field cada 3s (edificios cambian poco)
+let ffRebuildT = 0;
+
 // ---------- Simulación ----------
 function step(dt){
   if(G.winner) return;
   G.time += dt; G.tick++;
+
+  // Reconstruye cost field cada 3s o cuando cambia algo
+  ffRebuildT -= dt;
+  if (ffRebuildT <= 0) { FF.rebuildCost(); ffRebuildT = 3; }
 
   // Edificios: producción y defensa
   for(const e of G.ents){
@@ -436,14 +578,56 @@ function stepUnit(e, dt){
 }
 
 function moveToward(e, tx, ty, dt){
-  const d=DEFS[e.kind];
-  const dx=tx-e.x, dy=ty-e.y, dd=Math.hypot(dx,dy);
-  if(dd<1){ e.moving=false; return; }
-  const sp=d.speed*(e.spdMul||1)*dt;
-  e.x += dx/dd*Math.min(sp,dd);
-  e.y += dy/dd*Math.min(sp,dd);
-  e.x=clamp(e.x,8,MAP_W-8); e.y=clamp(e.y,8,MAP_H-8);
-  e.moving=true;
+  const d = DEFS[e.kind];
+  const dx = tx - e.x, dy = ty - e.y, dd = Math.hypot(dx, dy);
+  if (dd < 1) { e.moving = false; return; }
+  const sp = d.speed * (e.spdMul || 1) * dt;
+
+  let vx, vy;
+  if (dd > FF.CELL * 1.5) {
+    // Flow Field para navegación a media/larga distancia
+    const dir = FF.direction(e.x, e.y, tx, ty);
+    if (dir.dx === 0 && dir.dy === 0) {
+      // celda bloqueada o destino inalcanzable: fallback directo
+      vx = dx / dd; vy = dy / dd;
+    } else {
+      const dm = Math.hypot(dir.dx, dir.dy);
+      vx = dir.dx / dm; vy = dir.dy / dm;
+      // Blending: mezcla flow field con dirección directa cerca del destino
+      const blend = clamp((dd - FF.CELL) / (FF.CELL * 4), 0, 1);
+      vx = vx * blend + (dx / dd) * (1 - blend);
+      vy = vy * blend + (dy / dd) * (1 - blend);
+      const vm = Math.hypot(vx, vy);
+      if (vm > 0) { vx /= vm; vy /= vm; }
+    }
+  } else {
+    // Directo cuando ya está cerca
+    vx = dx / dd; vy = dy / dd;
+  }
+
+  // Steering: separación suave de otras unidades (evitar amontonamiento)
+  let sx = 0, sy = 0;
+  for (const o of G.ents) {
+    if (o === e || o.building) continue;
+    const ox = e.x - o.x, oy = e.y - o.y;
+    const od = Math.hypot(ox, oy);
+    const minD = DEFS[e.kind].r + DEFS[o.kind].r + 2;
+    if (od > 0 && od < minD * 1.8) {
+      const push = (minD * 1.8 - od) / (minD * 1.8);
+      sx += (ox / od) * push;
+      sy += (oy / od) * push;
+    }
+  }
+  const steerStr = 0.35;
+  vx += sx * steerStr; vy += sy * steerStr;
+  const vm = Math.hypot(vx, vy);
+  if (vm > 0) { vx /= vm; vy /= vm; }
+
+  e.x += vx * Math.min(sp, dd);
+  e.y += vy * Math.min(sp, dd);
+  e.x = clamp(e.x, 8, MAP_W - 8);
+  e.y = clamp(e.y, 8, MAP_H - 8);
+  e.moving = true;
 }
 
 function shoot(from, tgt, dmg, fromBuilding){
@@ -686,6 +870,8 @@ function render(){
   }
 
   ctx.restore();
+
+  drawFlowFieldDebug();
 
   // caja de selección
   if(drag){
@@ -1015,6 +1201,46 @@ function drawMinimap(S){
 }
 const mini={box:null};
 
+// ---------- Debug Flow Field (tecla F) ----------
+let showFlowField = false;
+function drawFlowFieldDebug() {
+  if (!showFlowField || !FF.cost || sel.size === 0) return;
+  // Muestra el flow field del primer seleccionado con destino visible
+  const S = renderState();
+  const firstId = [...sel][0];
+  const ent = entById2(S, firstId);
+  if (!ent || ent.building || !ent.tx) return;
+  const { flow } = FF.getFlow(ent.tx, ent.ty);
+  const C = FF.COLS, CELL = FF.CELL;
+  const DX = [-1,1,0,0,-1,1,-1,1];
+  const DY = [0,0,-1,1,-1,-1,1,1];
+  ctx.save(); ctx.translate(-cam.x, -cam.y);
+  for (let cy = 0; cy < FF.ROWS; cy++) {
+    for (let cx = 0; cx < C; cx++) {
+      const wx = (cx + 0.5) * CELL, wy = (cy + 0.5) * CELL;
+      if (wx < cam.x - CELL || wx > cam.x + view.w + CELL) continue;
+      if (wy < cam.y - CELL || wy > cam.y + view.h + CELL) continue;
+      const i = cy * C + cx;
+      if (FF.cost[i] === 255) {
+        ctx.fillStyle = 'rgba(255,50,50,0.18)';
+        ctx.fillRect(cx * CELL, cy * CELL, CELL, CELL);
+        continue;
+      }
+      const fdx = flow[i*2], fdy = flow[i*2+1];
+      if (fdx === 0 && fdy === 0) continue;
+      ctx.strokeStyle = 'rgba(120,255,180,0.35)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(wx, wy);
+      ctx.lineTo(wx + fdx * CELL * 0.38, wy + fdy * CELL * 0.38);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(120,255,180,0.5)';
+      ctx.beginPath(); ctx.arc(wx + fdx*CELL*0.38, wy + fdy*CELL*0.38, 2, 0, Math.PI*2); ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
 // ---------- Input ----------
 const keys={};
 
@@ -1057,6 +1283,7 @@ window.addEventListener('keydown', e=>{
   }
   keys[e.key.toLowerCase()]=true;
   if(e.key==='Escape'){ buildKind=null; }
+  if(e.key.toLowerCase()==='f' && !inField){ showFlowField=!showFlowField; }
   // hotkeys de construcción con aldeano seleccionado
   if(selHasVillager()){
     if(e.key.toLowerCase()==='q') setBuild('house');
