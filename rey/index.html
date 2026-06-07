@@ -18,7 +18,19 @@
       <div class="tag">// estrategia en tiempo real · estilo LAN //</div>
     </div>
 
-    <div class="card">
+    <!-- ── VISTA A: invitado llega con ?sala=REINO-XXXX en la URL ── -->
+    <div class="card" id="viewJoin" style="display:none">
+      <h2>TE INVITARON A JUGAR</h2>
+      <div id="joinRoomLabel" style="font-family:'Press Start 2P',monospace;font-size:18px;color:var(--green);text-align:center;margin:14px 0 6px;letter-spacing:2px;"></div>
+      <div class="hint" style="text-align:center;margin-bottom:16px;">Serás <strong style="color:var(--blue)">NELSON</strong> (azul)</div>
+      <button class="btn blue" id="btnAutoJoin" style="font-size:26px;padding:18px;">⚔ ENTRAR A LA BATALLA</button>
+      <div id="netStatus2" style="margin-top:10px;text-align:center;color:var(--amber);font-size:18px;"></div>
+      <div class="divider">— · · · —</div>
+      <button class="btn" style="font-size:18px;" onclick="REINOS.goHome()">← Volver al menú</button>
+    </div>
+
+    <!-- ── VISTA B: menú normal ── -->
+    <div class="card" id="viewHome">
       <h2>UN JUGADOR</h2>
       <div class="row">
         <button class="btn red" onclick="REINOS.startSolo('red')">JUGAR COMO LEÓN<small>vs CPU (azul)</small></button>
@@ -29,22 +41,28 @@
 
       <h2>JUGAR CON EL PRIMO (ONLINE)</h2>
       <div class="row">
-        <button class="btn" onclick="REINOS.hostGame()">CREAR SALA<small>tú eres LEÓN</small></button>
-      </div>
-      <div id="hostWait">
-        Código de sala: <span id="roomCode">— — —</span><br>
-        <span id="netStatus">listo</span><br>
-        <span class="hint">Pásale este código al primo. Ya puedes empezar a juntar recursos mientras llega.</span>
+        <button class="btn red" onclick="REINOS.hostGame()">⚔ CREAR SALA<small>tú eres LEÓN (rojo)</small></button>
       </div>
 
-      <div class="row" style="margin-top:12px;">
-        <input class="code" id="joinInput" placeholder="REINO-0000" maxlength="12">
-        <button class="btn blue" onclick="REINOS.joinGame(document.getElementById('joinInput').value)">UNIRME<small>serás NELSON</small></button>
-      </div>
-      <div id="netStatus2" style="margin-top:6px;"></div>
+      <!-- Panel que aparece después de crear sala -->
+      <div id="hostPanel" style="display:none;margin-top:14px;">
+        <div style="text-align:center;margin-bottom:10px;">
+          <div style="font-size:15px;color:#5e8a72;margin-bottom:6px;">CÓDIGO DE SALA</div>
+          <div id="roomCode" style="font-family:'Press Start 2P',monospace;font-size:28px;color:var(--green);letter-spacing:4px;padding:10px 0;">—</div>
+          <div id="netStatus" style="color:var(--amber);font-size:18px;margin:6px 0;">listo</div>
+        </div>
 
-      <div class="hint">
-        Objetivo: junta 🪙 oro y 🪵 madera, construye, entrena ejército y destruye el castillo enemigo.
+        <!-- Link de invitación -->
+        <div style="background:#0c1a13;border:1px dashed var(--line);border-radius:4px;padding:10px 12px;margin-bottom:10px;">
+          <div style="font-size:15px;color:#5e8a72;margin-bottom:6px;">LINK DE INVITACIÓN</div>
+          <div id="inviteLink" style="font-size:15px;color:#9fd9b4;word-break:break-all;line-height:1.5;"></div>
+        </div>
+
+        <div class="row">
+          <button class="btn" id="btnCopy" onclick="REINOS.copyLink()">📋 COPIAR LINK<small>envíaselo al primo</small></button>
+          <button class="btn" id="btnShare" onclick="REINOS.shareLink()" style="display:none">📤 COMPARTIR<small>envíaselo al primo</small></button>
+        </div>
+        <div class="hint" style="margin-top:10px;">Ya puedes jugar. Nelson se une cuando abra el link.</div>
       </div>
     </div>
   </div>
@@ -55,6 +73,10 @@
     <div class="stat gold">🪙 <span id="gold">0</span></div>
     <div class="stat wood">🪵 <span id="wood">0</span></div>
     <div class="stat pop">👥 <span id="pop">0/10</span></div>
+    <div id="roomBadge" style="display:none;align-items:center;gap:6px;font-size:16px;padding:2px 10px;border:1px solid var(--line);border-radius:4px;background:rgba(8,18,14,0.8);">
+      <span id="roomBadgeCode" style="font-family:'Press Start 2P',monospace;font-size:11px;color:var(--green)"></span>
+      <span id="roomBadgeStatus" style="color:var(--amber);font-size:16px;"></span>
+    </div>
     <div class="stat" id="enemyInfo"></div>
   </div>
 
@@ -65,12 +87,6 @@
   </div>
 
   <div class="controls" id="ctrlHint"></div>
-  <script>
-    document.getElementById('ctrlHint').innerHTML =
-      ('ontouchstart' in window || navigator.maxTouchPoints > 0)
-      ? 'TAP: seleccionar · TAP en suelo: mover/atacar<br>MANTÉN: mover/atacar (ripple dorado)<br>ARRASTRA: mover cámara · 2 dedos: pan'
-      : 'WASD/flechas/bordes: cámara · Click izq: seleccionar<br>Click der: mover/atacar · Aldeano → Q E R construir<br>G: niebla · F: debug flow field';
-  </script>
 
   <!-- ====== FIN ====== -->
   <div id="endScreen">
@@ -78,6 +94,30 @@
     <div id="endSub"></div>
     <button class="btn" style="max-width:240px;" onclick="REINOS.restart()">VOLVER AL MENÚ</button>
   </div>
+
+  <script>
+    // Detecta si llegó con ?sala=REINO-XXXX
+    (function(){
+      const p = new URLSearchParams(location.search);
+      const sala = p.get('sala');
+      if(sala && sala.startsWith('REINO-')){
+        document.getElementById('viewHome').style.display = 'none';
+        document.getElementById('viewJoin').style.display = 'block';
+        document.getElementById('joinRoomLabel').textContent = sala;
+        document.getElementById('btnAutoJoin').onclick = () => REINOS.joinGame(sala);
+      }
+    })();
+
+    // Hint de controles según dispositivo
+    document.getElementById('ctrlHint').innerHTML =
+      ('ontouchstart' in window || navigator.maxTouchPoints > 0)
+      ? 'TAP: seleccionar · TAP en suelo: mover/atacar<br>MANTÉN: orden (ripple dorado) · ARRASTRA: cámara'
+      : 'WASD/flechas/bordes: cámara · Click izq: seleccionar · Click der: mover/atacar<br>Aldeano → Q casa · E cuartel · R torre · G: niebla · F: flow field';
+
+    // Muestra botón "Compartir" nativo si el browser lo soporta
+    if(navigator.share) document.getElementById('btnShare').style.display='flex';
+    else document.getElementById('btnCopy').style.display='flex';
+  </script>
 
   <!-- PeerJS para el multijugador P2P -->
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>

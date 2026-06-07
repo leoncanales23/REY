@@ -2179,10 +2179,22 @@ function startGame(opts){
   document.getElementById('hud').style.display='block';
   document.getElementById('panel').style.display='flex';
   setText('p1name', COLOR[mySide].name);
+  // Badge de sala solo en multijugador
+  if(mode!=='sp' && _currentRoomCode){
+    updateRoomBadge(_currentRoomCode, mode==='host'?'⏳ esperando…':'⏳ conectando…');
+  }
   // espera a tener algo que centrar
   const c=setInterval(()=>{ if(renderState()&&renderState().ents&&renderState().ents.length){ centerCamOnBase(); clearInterval(c);} },100);
   running=true; lastT=0; simAcc=0; snapAcc=0;
   requestAnimationFrame(loop);
+}
+
+function updateRoomBadge(code, status){
+  const badge = document.getElementById('roomBadge');
+  if(!badge) return;
+  badge.style.display = 'flex';
+  setText('roomBadgeCode', code);
+  setText('roomBadgeStatus', status);
 }
 
 function showEnd(winner){
@@ -2199,28 +2211,79 @@ function showEnd(winner){
 }
 
 // Exponer a la UI (index.html)
+let _currentRoomCode = '';
+let _inviteUrl = '';
+
 window.REINOS = {
   startSolo(side){ startGame({mode:'sp', side}); },
+
   hostGame(){
     const code = Net.makeCode();
+    _currentRoomCode = code;
+    _inviteUrl = location.origin + location.pathname + '?sala=' + code;
+
+    // Muestra panel de sala
+    document.getElementById('hostPanel').style.display = 'block';
     document.getElementById('roomCode').textContent = code;
-    Net.onPeer = ()=>{ /* listo */ };
+    document.getElementById('inviteLink').textContent = _inviteUrl;
+
+    // Actualiza URL del browser (sin recargar)
+    history.replaceState(null, '', '?sala=' + code);
+
+    Net.onStatus = (t) => {
+      setText('netStatus', t);
+      updateRoomBadge(code, t);
+    };
+    Net.onPeer = () => {
+      setText('netStatus', '✅ ¡Nelson conectado!');
+      updateRoomBadge(code, '✅ Nelson online');
+    };
     Net.host(code);
-    Net.onStatus = (t)=>setText('netStatus', t);
-    document.getElementById('hostWait').style.display='block';
-    // el host es LEÓN (rojo). arranca de inmediato; el cliente se une cuando quiera.
     startGame({mode:'host', side:'red'});
   },
+
   joinGame(code){
     if(!code) return;
-    code=code.trim().toUpperCase();
-    Net.onStatus=(t)=>setText('netStatus2', t);
+    code = code.trim().toUpperCase();
+    _currentRoomCode = code;
+    Net.onStatus = (t) => {
+      setText('netStatus2', t);
+      updateRoomBadge(code, t);
+    };
+    Net.onPeer = () => {
+      setText('netStatus2', '✅ ¡Conectado con León!');
+      updateRoomBadge(code, '✅ León online');
+    };
     Net.join(code);
-    Net.onPeer=()=>{ /* conectado */ };
-    // el que se une es NELSON (azul)
     startGame({mode:'client', side:'blue'});
   },
-  restart(){ location.reload(); },
+
+  copyLink(){
+    navigator.clipboard.writeText(_inviteUrl).then(()=>{
+      const btn = document.getElementById('btnCopy');
+      btn.innerHTML = '✅ COPIADO<small>pégalo en WhatsApp</small>';
+      setTimeout(()=>{ btn.innerHTML='📋 COPIAR LINK<small>envíaselo al primo</small>'; }, 2500);
+    }).catch(()=>{
+      // fallback
+      prompt('Copia este link:', _inviteUrl);
+    });
+  },
+
+  shareLink(){
+    if(navigator.share){
+      navigator.share({ title:'REINOS — te invito a jugar', url: _inviteUrl });
+    }
+  },
+
+  goHome(){
+    history.replaceState(null, '', location.pathname);
+    location.reload();
+  },
+
+  restart(){
+    history.replaceState(null, '', location.pathname);
+    location.reload();
+  },
 };
 
 // init
