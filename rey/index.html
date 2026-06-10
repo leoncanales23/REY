@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>REINOS — Nelson vs León</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="crt">
+
+  <canvas id="game"></canvas>
+
+  <!-- ====== MENÚ ====== -->
+  <div id="menu">
+    <div class="logo">
+      <h1>REINOS</h1>
+      <div class="sub">NELSON &nbsp;⚔&nbsp; LEÓN</div>
+      <div class="tag">// estrategia en tiempo real · estilo LAN //</div>
+    </div>
+
+    <div class="card">
+      <h2>UN JUGADOR</h2>
+      <div class="row">
+        <button class="btn red" onclick="REINOS.startSolo('red')">JUGAR COMO LEÓN<small>vs CPU (azul)</small></button>
+        <button class="btn blue" onclick="REINOS.startSolo('blue')">JUGAR COMO NELSON<small>vs CPU (rojo)</small></button>
+      </div>
+
+      <div class="divider">— · · · —</div>
+
+      <h2>JUGAR CON EL PRIMO (ONLINE)</h2>
+      <div class="row">
+        <button class="btn" onclick="REINOS.hostGame()">CREAR SALA<small>tú eres LEÓN</small></button>
+      </div>
+      <div id="hostWait">
+        Código de sala: <span id="roomCode">— — —</span><br>
+        <span id="netStatus">listo</span><br>
+        <span class="hint">Pásale este código al primo. Ya puedes empezar a juntar recursos mientras llega.</span>
+      </div>
+
+      <div class="row" style="margin-top:12px;">
+        <input class="code" id="joinInput" placeholder="REINO-0000" maxlength="12">
+        <button class="btn blue" onclick="REINOS.joinGame(document.getElementById('joinInput').value)">UNIRME<small>serás NELSON</small></button>
+      </div>
+      <div id="netStatus2" style="margin-top:6px;"></div>
+
+      <div class="hint">
+        Objetivo: junta 🪙 oro y 🪵 madera, construye, entrena ejército y destruye el castillo enemigo.
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== HUD ====== -->
+  <div id="hud">
+    <div class="stat" id="p1name">LEÓN</div>
+    <div class="stat gold">🪙 <span id="gold">0</span></div>
+    <div class="stat wood">🪵 <span id="wood">0</span></div>
+    <div class="stat pop">👥 <span id="pop">0/10</span></div>
+    <div class="stat" id="enemyInfo"></div>
+  </div>
+
+  <!-- ====== PANEL DE COMANDOS ====== -->
+  <div id="panel">
+    <div id="selInfo">— sin selección —</div>
+    <div id="cmds"></div>
+  </div>
+
+  <div class="controls">
+    WASD / flechas / bordes: mover cámara<br>
+    Click izq: seleccionar · arrastrar: caja<br>
+    Click der: mover / atacar / recolectar<br>
+    Aldeano → Q casa · E cuartel · R torre
+  </div>
+
+  <!-- ====== FIN ====== -->
+  <div id="endScreen">
+    <div id="endTitle">FIN</div>
+    <div id="endSub"></div>
+    <button class="btn" style="max-width:240px;" onclick="REINOS.restart()">VOLVER AL MENÚ</button>
+  </div>
+
+  <!-- PeerJS para el multijugador P2P -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script src="net.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
