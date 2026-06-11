@@ -59,7 +59,6 @@ function freshState() {
       blue: {g:200, w:200, pop:0, cap:10},
     },
     ents: [], nodes: [], projectiles: [],
-    particles: [],   // sistema de partículas
   };
 }
 
@@ -97,9 +96,7 @@ function addNode(type, x, y, amount) {
 // ---------- Inicialización de partida ----------
 function initMap() {
   G = freshState();
-  TERRAIN.init();
   FF.init();
-  FOG.init();
 
   // Castillos
   const RX = 320, RY = MAP_H/2;
@@ -281,264 +278,6 @@ function issue(cmd){
 }
 
 // ============================================================
-//  TERRAIN — openage terrain_tile / terrain_chunk
-//  Tiles con costos de movimiento variables: pasto(1), barro(3), agua(255), camino(0.5)
-// ============================================================
-const TERRAIN = {
-  TILE: 80,           // tamaño de tile en px
-  tiles: null,        // Float32Array de costos por tile (para FF)
-  biomes: null,       // Uint8Array tipo visual: 0=pasto 1=barro 2=agua 3=camino
-  COLS: 0, ROWS: 0,
-
-  init() {
-    this.COLS = Math.ceil(MAP_W / this.TILE);
-    this.ROWS = Math.ceil(MAP_H / this.TILE);
-    const N = this.COLS * this.ROWS;
-    this.tiles  = new Float32Array(N).fill(1);
-    this.biomes = new Uint8Array(N);   // 0=pasto por defecto
-
-    // Genera parches de barro y agua usando noise simple
-    const rng = (x,y,s) => {
-      let n=(x*374761393+y*668265263+s*1234567)|0;
-      n=(n^(n>>13))*1274126177; return ((n^(n>>16))>>>0)/4294967296;
-    };
-    // Caminos horizontales y verticales centrales
-    const midY = Math.floor(this.ROWS/2);
-    const midX = Math.floor(this.COLS/2);
-    for(let cx=0; cx<this.COLS; cx++){
-      if(Math.abs(Math.floor(MAP_H/2/this.TILE)-midY)<=0){
-        this.set(cx,midY,3,0.6); // camino horizontal central
-      }
-    }
-    for(let cy=0; cy<this.ROWS; cy++){
-      this.set(midX,cy,3,0.6); // camino vertical central
-    }
-
-    // Parches de barro (cost 2.5)
-    for(let cy=0; cy<this.ROWS; cy++){
-      for(let cx=0; cx<this.COLS; cx++){
-        if(this.biomes[cy*this.COLS+cx]!==0) continue;
-        const r=rng(cx,cy,7);
-        if(r<0.12) this.set(cx,cy,1,2.5);       // barro
-        else if(r<0.04) this.set(cx,cy,2,255);   // agua (menor probabilidad)
-      }
-    }
-
-    // Limpia tiles cerca de castillos para no bloquear spawn
-    const clearAround=(wx,wy,rad)=>{
-      const cx0=Math.floor((wx-rad)/this.TILE), cy0=Math.floor((wy-rad)/this.TILE);
-      const cx1=Math.ceil((wx+rad)/this.TILE),  cy1=Math.ceil((wy+rad)/this.TILE);
-      for(let cy=cy0;cy<=cy1;cy++) for(let cx=cx0;cx<=cx1;cx++) this.set(cx,cy,0,1);
-    };
-    clearAround(320, MAP_H/2, 180);
-    clearAround(MAP_W-320, MAP_H/2, 180);
-  },
-
-  set(cx,cy,biome,cost){
-    if(cx<0||cx>=this.COLS||cy<0||cy>=this.ROWS) return;
-    const i=cy*this.COLS+cx;
-    this.biomes[i]=biome; this.tiles[i]=cost;
-  },
-
-  // Aplica costos de terreno al FF.cost (se llama en rebuildCost)
-  applyToFF() {
-    const ffCell=FF.CELL, tileSize=this.TILE;
-    const ratio=tileSize/ffCell;
-    for(let tcy=0;tcy<this.ROWS;tcy++){
-      for(let tcx=0;tcx<this.COLS;tcx++){
-        const cost=this.tiles[tcy*this.COLS+tcx];
-        if(cost===1) continue;
-        // Marca todas las celdas FF dentro de este tile
-        const fx0=Math.floor(tcx*ratio), fy0=Math.floor(tcy*ratio);
-        const fx1=Math.ceil((tcx+1)*ratio), fy1=Math.ceil((tcy+1)*ratio);
-        for(let fy=fy0;fy<fy1;fy++) for(let fx=fx0;fx<fx1;fx++){
-          if(fx<0||fx>=FF.COLS||fy<0||fy>=FF.ROWS) continue;
-          const fi=fy*FF.COLS+fx;
-          if(FF.cost[fi]!==255) FF.cost[fi]=Math.max(FF.cost[fi], cost===255?255:Math.round(cost));
-        }
-      }
-    }
-  },
-
-  // Devuelve factor de velocidad en posición mundo (1=normal, <1=más rápido, >1=más lento)
-  speedFactor(wx,wy){
-    const cx=clamp(Math.floor(wx/this.TILE),0,this.COLS-1);
-    const cy=clamp(Math.floor(wy/this.TILE),0,this.ROWS-1);
-    const c=this.tiles[cy*this.COLS+cx];
-    if(c>=255) return 0.1;
-    if(c<=0.6) return 1.35;  // camino: más rápido
-    if(c>=2)   return 0.55;  // barro: más lento
-    return 1;
-  },
-};
-
-// ============================================================
-//  SPATIAL HASH GRID — O(1) lookup de vecinos (openage architecture)
-//  Reemplaza O(n²) en separate() y nearestEnemy()
-// ============================================================
-const SH = {
-  CELL: 80,
-  map: new Map(),
-
-  clear(){ this.map.clear(); },
-  key(wx,wy){ return `${(wx/this.CELL)|0},${(wy/this.CELL)|0}`; },
-
-  insert(e){
-    const k=this.key(e.x,e.y);
-    if(!this.map.has(k)) this.map.set(k,[]);
-    this.map.get(k).push(e);
-  },
-
-  // Devuelve entidades en radio
-  query(wx,wy,r){
-    const cr=Math.ceil(r/this.CELL);
-    const cx=(wx/this.CELL)|0, cy=(wy/this.CELL)|0;
-    const res=[];
-    for(let dy=-cr;dy<=cr;dy++) for(let dx=-cr;dx<=cr;dx++){
-      const k=`${cx+dx},${cy+dy}`;
-      const bucket=this.map.get(k);
-      if(bucket) for(const e of bucket) res.push(e);
-    }
-    return res;
-  },
-
-  rebuild(ents){ this.clear(); for(const e of ents) this.insert(e); },
-};
-
-// ============================================================
-//  PARTÍCULAS — renderer de efectos visuales
-// ============================================================
-function spawnParticles(x, y, type){
-  if(!G || !G.particles) return;
-  const now = performance.now()/1000;
-  if(type==='hit'){
-    for(let i=0;i<6;i++){
-      const a=Math.random()*Math.PI*2, sp=30+Math.random()*60;
-      G.particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
-        life:0.35, maxLife:0.35, color:'#ff6b3b', r:2.5, type:'spark'});
-    }
-  } else if(type==='death'){
-    for(let i=0;i<14;i++){
-      const a=Math.random()*Math.PI*2, sp=20+Math.random()*90;
-      G.particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
-        life:0.6, maxLife:0.6, color:i%2?'#c0392b':'#e74c3c', r:3+Math.random()*3, type:'spark'});
-    }
-  } else if(type==='gold'){
-    for(let i=0;i<5;i++){
-      const a=-Math.PI/2 + (Math.random()-0.5)*1.2, sp=40+Math.random()*40;
-      G.particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
-        life:0.5, maxLife:0.5, color:'#ffd84a', r:3, type:'float'});
-    }
-  } else if(type==='build'){
-    for(let i=0;i<10;i++){
-      const a=Math.random()*Math.PI*2, sp=15+Math.random()*40;
-      G.particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-30,
-        life:0.7, maxLife:0.7, color:'#c8b99a', r:2+Math.random()*2, type:'dust'});
-    }
-  }
-}
-
-function stepParticles(dt){
-  if(!G.particles) return;
-  for(const p of G.particles){
-    p.x += p.vx*dt; p.y += p.vy*dt;
-    if(p.type==='spark'){ p.vy += 120*dt; }   // gravedad
-    if(p.type==='float'){ p.vy -= 20*dt; }     // flota
-    if(p.type==='dust') { p.vx*=0.92; p.vy*=0.92; }
-    p.life -= dt;
-  }
-  G.particles = G.particles.filter(p=>p.life>0);
-}
-
-function drawParticles(S){
-  if(!S.particles) return;
-  for(const p of S.particles){
-    if(p.x<cam.x-10||p.x>cam.x+view.w+10||p.y<cam.y-10||p.y>cam.y+view.h+10) continue;
-    ctx.globalAlpha = clamp(p.life/p.maxLife, 0, 1);
-    ctx.fillStyle = p.color;
-    ctx.beginPath();
-    ctx.arc(p.x-cam.x, p.y-cam.y, p.r, 0, Math.PI*2);
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-}
-
-// ============================================================
-//  AUDIO PROCEDURAL — Web Audio API (sin archivos, puro código)
-//  Inspirado en el event system de openage para audio triggers
-// ============================================================
-const SFX = {
-  ctx: null,
-  init(){ try{ this.ctx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} },
-  resume(){ if(this.ctx && this.ctx.state==='suspended') this.ctx.resume(); },
-
-  play(type){
-    if(!this.ctx) return;
-    const ac=this.ctx, now=ac.currentTime;
-    const osc=ac.createOscillator(), gain=ac.createGain();
-    osc.connect(gain); gain.connect(ac.destination);
-
-    if(type==='hit'){
-      osc.type='sawtooth'; osc.frequency.setValueAtTime(220,now);
-      osc.frequency.exponentialRampToValueAtTime(80,now+0.08);
-      gain.gain.setValueAtTime(0.18,now); gain.gain.exponentialRampToValueAtTime(0.001,now+0.12);
-      osc.start(now); osc.stop(now+0.12);
-    } else if(type==='death'){
-      osc.type='sawtooth'; osc.frequency.setValueAtTime(300,now);
-      osc.frequency.exponentialRampToValueAtTime(40,now+0.35);
-      gain.gain.setValueAtTime(0.22,now); gain.gain.exponentialRampToValueAtTime(0.001,now+0.35);
-      osc.start(now); osc.stop(now+0.35);
-    } else if(type==='gold'){
-      osc.type='sine'; osc.frequency.setValueAtTime(880,now);
-      osc.frequency.setValueAtTime(1100,now+0.05);
-      gain.gain.setValueAtTime(0.12,now); gain.gain.exponentialRampToValueAtTime(0.001,now+0.18);
-      osc.start(now); osc.stop(now+0.18);
-    } else if(type==='build'){
-      osc.type='square'; osc.frequency.setValueAtTime(160,now);
-      osc.frequency.exponentialRampToValueAtTime(260,now+0.12);
-      gain.gain.setValueAtTime(0.14,now); gain.gain.exponentialRampToValueAtTime(0.001,now+0.2);
-      osc.start(now); osc.stop(now+0.2);
-    } else if(type==='train'){
-      ['sine','sine'].forEach((t,i)=>{
-        const o=ac.createOscillator(), g=ac.createGain();
-        o.connect(g); g.connect(ac.destination);
-        o.type=t; o.frequency.setValueAtTime(520+i*130,now+i*0.08);
-        g.gain.setValueAtTime(0.1,now+i*0.08); g.gain.exponentialRampToValueAtTime(0.001,now+i*0.08+0.15);
-        o.start(now+i*0.08); o.stop(now+i*0.08+0.15);
-      });
-      return;
-    } else if(type==='victory'){
-      [523,659,784,1047].forEach((f,i)=>{
-        const o=ac.createOscillator(), g=ac.createGain();
-        o.connect(g); g.connect(ac.destination);
-        o.type='sine'; o.frequency.setValueAtTime(f,now+i*0.12);
-        g.gain.setValueAtTime(0.15,now+i*0.12); g.gain.exponentialRampToValueAtTime(0.001,now+i*0.12+0.22);
-        o.start(now+i*0.12); o.stop(now+i*0.12+0.25);
-      });
-      return;
-    } else if(type==='defeat'){
-      [784,659,523,392].forEach((f,i)=>{
-        const o=ac.createOscillator(), g=ac.createGain();
-        o.connect(g); g.connect(ac.destination);
-        o.type='sine'; o.frequency.setValueAtTime(f,now+i*0.15);
-        g.gain.setValueAtTime(0.14,now+i*0.15); g.gain.exponentialRampToValueAtTime(0.001,now+i*0.15+0.25);
-        o.start(now+i*0.15); o.stop(now+i*0.15+0.28);
-      });
-      return;
-    } else if(type==='cheat'){
-      [440,554,659,880,1108].forEach((f,i)=>{
-        const o=ac.createOscillator(), g=ac.createGain();
-        o.connect(g); g.connect(ac.destination);
-        o.type='triangle'; o.frequency.setValueAtTime(f,now+i*0.07);
-        g.gain.setValueAtTime(0.13,now+i*0.07); g.gain.exponentialRampToValueAtTime(0.001,now+i*0.07+0.12);
-        o.start(now+i*0.07); o.stop(now+i*0.07+0.15);
-      });
-      return;
-    }
-  },
-};
-
-// ============================================================
 //  FLOW FIELD PATHFINDING — inspirado en openage / Emerson
 //  Grid → Sectores → CostField → IntegrationField → FlowField
 // ============================================================
@@ -567,11 +306,10 @@ const FF = {
     return { x: (cx + 0.5) * this.CELL, y: (cy + 0.5) * this.CELL };
   },
 
-  // Marca celdas bloqueadas según edificios + terreno
+  // Marca celdas bloqueadas según edificios actuales
   rebuildCost() {
     this.cost.fill(1);
     if (!G) return;
-    TERRAIN.applyToFF();  // terreno primero
     for (const e of G.ents) {
       if (!e.building || !e.constructed) continue;
       const r = DEFS[e.kind].r + 4;
@@ -670,177 +408,6 @@ const FF = {
   },
 };
 
-// ============================================================
-//  LOS — Line of Sight en el Integration Field
-//  Celdas con visión directa al destino reciben coste 0 (van directo)
-// ============================================================
-FF.buildIntegrationWithLOS = function(dcx, dcy) {
-  const N = this.COLS * this.ROWS;
-  const inte = new Float32Array(N).fill(Infinity);
-  const los  = new Uint8Array(N);       // 1 = tiene LOS al destino
-  const C = this.COLS, R = this.ROWS;
-  const di = this.idx(dcx, dcy);
-  inte[di] = 0; los[di] = 1;
-
-  // Rasteriza línea de Bresenham entre celda y destino para marcar LOS
-  const markLOS = (cx, cy) => {
-    let x0=cx, y0=cy, x1=dcx, y1=dcy;
-    const dx=Math.abs(x1-x0), dy=Math.abs(y1-y0);
-    const sx=x0<x1?1:-1, sy=y0<y1?1:-1;
-    let err=dx-dy;
-    while(!(x0===x1&&y0===y1)){
-      const ii=y0*C+x0;
-      if(this.cost[ii]===255) return false;
-      const e2=2*err;
-      if(e2>-dy){err-=dy;x0+=sx;}
-      if(e2< dx){err+=dx;y0+=sy;}
-    }
-    return true;
-  };
-
-  const queue = [di];
-  let head = 0;
-  while (head < queue.length) {
-    const i = queue[head++];
-    const cy = (i/C)|0, cx = i%C;
-    const cur = inte[i];
-    const neighbors = [
-      cx>0?i-1:-1, cx<C-1?i+1:-1, cy>0?i-C:-1, cy<R-1?i+C:-1,
-      (cx>0&&cy>0)?i-C-1:-1, (cx<C-1&&cy>0)?i-C+1:-1,
-      (cx>0&&cy<R-1)?i+C-1:-1, (cx<C-1&&cy<R-1)?i+C+1:-1,
-    ];
-    const costs=[1,1,1,1,1.41,1.41,1.41,1.41];
-    for(let n=0;n<8;n++){
-      const ni=neighbors[n]; if(ni<0) continue;
-      if(this.cost[ni]===255) continue;
-      const ncy=(ni/C)|0, ncx=ni%C;
-      let nc;
-      if(markLOS(ncx,ncy)){ nc=0; los[ni]=1; }
-      else { nc=cur+this.cost[ni]*costs[n]; }
-      if(nc<inte[ni]){ inte[ni]=nc; queue.push(ni); }
-    }
-  }
-  return {inte, los};
-};
-
-// Sobreescribe getFlow para usar LOS
-FF.getFlow = function(wx, wy) {
-  const {cx,cy} = this.worldToCell(wx,wy);
-  const key = `${cx},${cy}`;
-  if(this.cache.has(key)) return {flow:this.cache.get(key),cx,cy};
-  const {inte} = this.buildIntegrationWithLOS(cx,cy);
-  const flow = this.buildFlow(inte);
-  if(this.cache.size>=this.CACHE_MAX) this.cache.delete(this.cache.keys().next().value);
-  this.cache.set(key,flow);
-  return {flow,cx,cy};
-};
-
-// ============================================================
-//  FORMACIONES — openage-style: distribuye unidades en rejilla
-//  cuando se ordenan mover en grupo
-// ============================================================
-function computeFormationPositions(units, tx, ty) {
-  const n = units.length;
-  if (n === 1) return [{x:tx, y:ty}];
-  const cols  = Math.ceil(Math.sqrt(n));
-  const rows  = Math.ceil(n / cols);
-  const gap   = 28;  // separación entre slots
-  const W     = (cols - 1) * gap;
-  const H     = (rows - 1) * gap;
-  const positions = [];
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      if (positions.length >= n) break;
-      positions.push({
-        x: clamp(tx - W/2 + c*gap, 20, MAP_W-20),
-        y: clamp(ty - H/2 + r*gap, 20, MAP_H-20),
-      });
-    }
-  }
-  // Asigna el slot más cercano a cada unidad (greedy)
-  const assigned = [];
-  const usedSlots = new Set();
-  for (const u of units) {
-    let best = -1, bd = Infinity;
-    for (let i = 0; i < positions.length; i++) {
-      if (usedSlots.has(i)) continue;
-      const d = dist2(u.x, u.y, positions[i].x, positions[i].y);
-      if (d < bd) { bd = d; best = i; }
-    }
-    usedSlots.add(best);
-    assigned.push({unit:u, pos:positions[best]});
-  }
-  return assigned;
-}
-
-// ============================================================
-//  NIEBLA DE GUERRA — Fog of War
-//  0=oculto  1=explorado(gris)  2=visible
-// ============================================================
-const FOG = {
-  CELL: 48,
-  COLS: 0, ROWS: 0,
-  vis: null,   // Uint8Array actual
-  exp: null,   // Uint8Array explorado (persiste)
-
-  init() {
-    this.COLS = Math.ceil(MAP_W / this.CELL);
-    this.ROWS = Math.ceil(MAP_H / this.CELL);
-    const N = this.COLS * this.ROWS;
-    this.vis = new Uint8Array(N);
-    this.exp = new Uint8Array(N);
-  },
-
-  update(side) {
-    if (!G) return;
-    this.vis.fill(0);
-    for (const e of G.ents) {
-      if (e.side !== side) continue;
-      const sight = DEFS[e.kind].sight || 80;
-      const cx = Math.floor(e.x / this.CELL);
-      const cy = Math.floor(e.y / this.CELL);
-      const cr = Math.ceil(sight / this.CELL);
-      const r2 = (sight / this.CELL) ** 2;
-      for (let dy = -cr; dy <= cr; dy++) {
-        for (let dx = -cr; dx <= cr; dx++) {
-          if (dx*dx + dy*dy > r2) continue;
-          const nx = cx+dx, ny = cy+dy;
-          if (nx<0||nx>=this.COLS||ny<0||ny>=this.ROWS) continue;
-          const i = ny*this.COLS+nx;
-          this.vis[i] = 2;
-          this.exp[i] = 1;
-        }
-      }
-    }
-  },
-
-  // Retorna 0/1/2 para una posición mundo
-  at(wx, wy) {
-    const cx = clamp(Math.floor(wx/this.CELL),0,this.COLS-1);
-    const cy = clamp(Math.floor(wy/this.CELL),0,this.ROWS-1);
-    const i  = cy*this.COLS+cx;
-    return this.vis[i] || this.exp[i];
-  },
-
-  // Dibuja overlay de niebla sobre el mapa (después de restaurar ctx)
-  draw() {
-    const C=this.COLS, CELL=this.CELL;
-    for (let cy=0; cy<this.ROWS; cy++) {
-      for (let cx=0; cx<C; cx++) {
-        const wx=cx*CELL-cam.x, wy=cy*CELL-cam.y;
-        if(wx>view.w||wy>view.h||wx+CELL<0||wy+CELL<0) continue;
-        const v = this.vis[cy*C+cx];
-        const e = this.exp[cy*C+cx];
-        if (v===2) continue;
-        ctx.fillStyle = e ? 'rgba(0,0,0,0.48)' : 'rgba(0,0,0,0.82)';
-        ctx.fillRect(wx, wy, CELL+1, CELL+1);
-      }
-    }
-  },
-};
-
-let fogEnabled = true; // toggle con tecla G
-
 // Rebuildea cost field cada 3s (edificios cambian poco)
 let ffRebuildT = 0;
 
@@ -849,15 +416,9 @@ function step(dt){
   if(G.winner) return;
   G.time += dt; G.tick++;
 
-  // Reconstruye cost field cada 3s
+  // Reconstruye cost field cada 3s o cuando cambia algo
   ffRebuildT -= dt;
   if (ffRebuildT <= 0) { FF.rebuildCost(); ffRebuildT = 3; }
-
-  // Spatial hash cada tick (barato, O(n))
-  SH.rebuild(G.ents);
-
-  // Partículas
-  stepParticles(dt);
 
   // Edificios: producción y defensa
   for(const e of G.ents){
@@ -870,7 +431,6 @@ function step(dt){
           const it=e.queue.shift();
           const sp=spawnNear(e, it.unit);
           if(sp){ sp.order={type:'move'}; sp.tx=e.rallyX; sp.ty=e.rallyY; sp.moving=true; }
-          SFX.play('train'); spawnParticles(e.x, e.y+DEFS[e.kind].r, 'build');
         }
       }
       // torres y castillo disparan
@@ -982,7 +542,6 @@ function stepUnit(e, dt){
       if(!drop){ e.moving=false; return; }
       if(dist(e.x,e.y,drop.x,drop.y) <= DEFS.castle.r+14){
         G.res[e.side][e.carryType==='gold'?'g':'w'] += e.carry;
-        spawnParticles(e.x,e.y,'gold'); SFX.play('gold');
         e.carry=0; e.carryType=null;
       } else moveToward(e, drop.x, drop.y, dt);
       return;
@@ -1006,8 +565,7 @@ function stepUnit(e, dt){
       e.moving=false;
       f.bp += dt*0.16;                  // ~6s con 1 aldeano
       f.hp = Math.max(f.hp, Math.round(f.maxHp*Math.min(1,f.bp)));
-      if(f.bp>=1){ f.bp=1; f.constructed=true; f.hp=f.maxHp; e.order=null; recalcPop();
-        spawnParticles(f.x, f.y, 'build'); SFX.play('build'); FF.cache.clear(); }
+      if(f.bp>=1){ f.bp=1; f.constructed=true; f.hp=f.maxHp; e.order=null; recalcPop(); }
     } else moveToward(e, f.x, f.y, dt);
     return;
   }
@@ -1065,10 +623,8 @@ function moveToward(e, tx, ty, dt){
   const vm = Math.hypot(vx, vy);
   if (vm > 0) { vx /= vm; vy /= vm; }
 
-  // Factor de velocidad según terreno
-  const tf = TERRAIN.speedFactor(e.x, e.y);
-  e.x += vx * Math.min(sp * tf, dd);
-  e.y += vy * Math.min(sp * tf, dd);
+  e.x += vx * Math.min(sp, dd);
+  e.y += vy * Math.min(sp, dd);
   e.x = clamp(e.x, 8, MAP_W - 8);
   e.y = clamp(e.y, 8, MAP_H - 8);
   e.moving = true;
@@ -1083,13 +639,7 @@ function shoot(from, tgt, dmg, fromBuilding){
 function damage(t, amount, fromSide){
   if(t.hp<=0) return;
   t.hp -= amount;
-  spawnParticles(t.x, t.y, 'hit');
-  if(mode!=='client') SFX.play('hit');
-  if(t.hp<=0){
-    spawnParticles(t.x, t.y, 'death');
-    if(mode!=='client') SFX.play('death');
-  }
-  // contraataque
+  // contraataque: villager o militar reacciona
   if(t.hp>0 && !t.building && !entById(t.targetId)){
     const a=nearestEnemy(t.side,t.x,t.y, DEFS[t.kind].sight);
     if(a && t.kind!=='villager') t.targetId=a.id;
@@ -1097,25 +647,24 @@ function damage(t, amount, fromSide){
 }
 
 function separate(){
-  // Usa Spatial Hash para O(n) en vez de O(n²)
-  for(const a of G.ents){
-    if(a.building) continue;
-    const neighbors = SH.query(a.x, a.y, 50);
-    for(const b of neighbors){
-      if(b===a || b.building) continue;
-      const dx=b.x-a.x, dy=b.y-a.y; const dd=Math.hypot(dx,dy);
+  const arr=G.ents;
+  for(let i=0;i<arr.length;i++){
+    const a=arr[i]; if(a.building) continue;
+    for(let j=i+1;j<arr.length;j++){
+      const b=arr[j]; if(b.building) continue;
+      const dx=b.x-a.x, dy=b.y-a.y; let dd=Math.hypot(dx,dy);
       const min=DEFS[a.kind].r+DEFS[b.kind].r;
       if(dd>0.001 && dd<min){
-        const push=(min-dd)/2, ux=dx/dd, uy=dy/dd;
+        const push=(min-dd)/2;
+        const ux=dx/dd, uy=dy/dd;
         a.x-=ux*push; a.y-=uy*push;
         b.x+=ux*push; b.y+=uy*push;
       }
     }
-    // empuje fuera de edificios cercanos (spatial hash también)
-    const nearBuildings = SH.query(a.x, a.y, 60);
-    for(const e of nearBuildings){
+    // empuje fuera de edificios
+    for(const e of arr){
       if(!e.building||!e.constructed) continue;
-      const dx=a.x-e.x, dy=a.y-e.y; const dd=Math.hypot(dx,dy);
+      const dx=a.x-e.x, dy=a.y-e.y; let dd=Math.hypot(dx,dy);
       const min=DEFS[a.kind].r+DEFS[e.kind].r;
       if(dd>0.001 && dd<min){ const p=(min-dd); a.x+=dx/dd*p; a.y+=dy/dd*p; }
     }
@@ -1268,7 +817,7 @@ function loop(ts){
 }
 
 function edgeScroll(dt){
-  const sp=620*dt, m=24, a=mouse.active && !isMobile;
+  const sp=620*dt, m=24, a=mouse.active;
   if(keys['arrowleft']||keys['a']||(a&&mouse.x>=0&&mouse.x<m)) cam.x-=sp;
   if(keys['arrowright']||keys['d']||(a&&mouse.x>view.w-m)) cam.x+=sp;
   if(keys['arrowup']||keys['w']||(a&&mouse.y>=0&&mouse.y<m)) cam.y-=sp;
@@ -1283,33 +832,27 @@ function render(){
   const S=renderState(); if(!S) return;
   ctx.clearRect(0,0,view.w,view.h);
 
-  // Actualiza fog de guerra
-  if(fogEnabled) FOG.update(mySide);
-
   ctx.save();
   ctx.translate(-cam.x,-cam.y);
 
   // terreno (pasto + tierra)
   drawGround();
 
-  // nodos (árboles / oro) — solo si visibles o explorados
+  // nodos (árboles / oro)
   for(const n of S.nodes){
     if(n.x<cam.x-50||n.x>cam.x+view.w+50||n.y<cam.y-50||n.y>cam.y+view.h+50) continue;
-    if(fogEnabled && FOG.at(n.x,n.y)===0) continue;
     if(n.type==='gold') drawGold(n); else drawTree(n);
   }
 
-  // edificios y unidades — enemigos ocultos en fog no se ven
+  // edificios y unidades
   const ents=S.ents.slice().sort((a,b)=>a.y-b.y);
   for(const e of ents){
     if(e.x<cam.x-60||e.x>cam.x+view.w+60||e.y<cam.y-60||e.y>cam.y+view.h+60) continue;
-    if(fogEnabled && e.side!==mySide && FOG.at(e.x,e.y)<2) continue;
     drawEntity(e);
   }
 
-  // proyectiles
+  // proyectiles (flechas/piedras)
   for(const p of (S.projectiles||[])){
-    if(fogEnabled && FOG.at(p.x,p.y)<2) continue;
     ctx.fillStyle='rgba(0,0,0,0.35)'; circle(p.x+1,p.y+2,2.6);
     ctx.fillStyle='#ffe27a'; circle(p.x,p.y,2.6);
     ctx.fillStyle='#fff7d6'; circle(p.x-0.6,p.y-0.6,1.1);
@@ -1328,12 +871,6 @@ function render(){
 
   ctx.restore();
 
-  // Partículas (en coordenadas pantalla)
-  drawParticles(S);
-
-  // Niebla de guerra encima del mapa
-  if(fogEnabled) FOG.draw();
-
   drawFlowFieldDebug();
 
   // caja de selección
@@ -1346,9 +883,6 @@ function render(){
   }
 
   drawMinimap(S);
-
-  // Ripples de long-press (móvil)
-  if(isMobile) drawRipples();
 }
 
 // hash determinista 0..1 (estable al hacer scroll)
@@ -1380,26 +914,6 @@ function drawGround(){
       }
     }
   }
-  // Terreno especial (barro, agua, caminos) encima del pasto
-  if(TERRAIN.tiles){
-    const T=TERRAIN.TILE;
-    const tx0=Math.floor(cam.x/T), ty0=Math.floor(cam.y/T);
-    const tx1=Math.ceil((cam.x+view.w)/T), ty1=Math.ceil((cam.y+view.h)/T);
-    for(let ty=ty0;ty<=ty1;ty++) for(let tx=tx0;tx<=tx1;tx++){
-      if(tx<0||tx>=TERRAIN.COLS||ty<0||ty>=TERRAIN.ROWS) continue;
-      const biome=TERRAIN.biomes[ty*TERRAIN.COLS+tx];
-      if(biome===0) continue;
-      const wx=tx*T, wy=ty*T;
-      if(biome===1){ ctx.fillStyle='rgba(80,55,30,0.48)'; } // barro
-      else if(biome===2){ ctx.fillStyle='rgba(30,80,140,0.55)'; } // agua
-      else if(biome===3){ ctx.fillStyle='rgba(160,140,90,0.38)'; } // camino
-      ctx.fillRect(wx,wy,T,T);
-      // borde sutil
-      ctx.strokeStyle='rgba(0,0,0,0.12)'; ctx.lineWidth=1;
-      ctx.strokeRect(wx,wy,T,T);
-    }
-  }
-
   // viñeta de borde del mapa
   ctx.strokeStyle='rgba(0,0,0,0.5)'; ctx.lineWidth=10;
   ctx.strokeRect(0,0,MAP_W,MAP_H);
@@ -1757,7 +1271,6 @@ function tryCheat(){
   king.atkMul=1.6; king.spdMul=1.35; king.buffT=8;
   G.res.red.g+=150; G.res.red.w+=150;
   cheatReadyAt=now+45000;
-  SFX.play('cheat');
   toast('⚡ ¡RUGIDO DEL REY LEÓN!  +150🪙 +150🪵 · Rey curado y enfurecido (8s)');
 }
 
@@ -1771,7 +1284,6 @@ window.addEventListener('keydown', e=>{
   keys[e.key.toLowerCase()]=true;
   if(e.key==='Escape'){ buildKind=null; }
   if(e.key.toLowerCase()==='f' && !inField){ showFlowField=!showFlowField; }
-  if(e.key.toLowerCase()==='g' && !inField){ fogEnabled=!fogEnabled; toast(fogEnabled?'🌫️ Niebla de guerra ON':'☀️ Niebla de guerra OFF'); }
   // hotkeys de construcción con aldeano seleccionado
   if(selHasVillager()){
     if(e.key.toLowerCase()==='q') setBuild('house');
@@ -1780,209 +1292,39 @@ window.addEventListener('keydown', e=>{
   }
 });
 window.addEventListener('keyup', e=>{ keys[e.key.toLowerCase()]=false; });
-window.addEventListener('pointerdown', ()=>SFX.resume(), {once:false});
 
-// ── Detecta móvil ────────────────────────────────────────────
-const isMobile = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
-
-// ── Ripple visual para long-press ────────────────────────────
-const ripples = [];
-function showRipple(x, y){
-  ripples.push({x, y, r:0, maxR:36, life:1});
-}
-function drawRipples(){
-  for(const rp of ripples){
-    rp.r += 2.2; rp.life -= 0.06;
-    ctx.strokeStyle=`rgba(255,220,80,${rp.life.toFixed(2)})`;
-    ctx.lineWidth=2;
-    ctx.beginPath(); ctx.arc(rp.x, rp.y, rp.r, 0, Math.PI*2); ctx.stroke();
-  }
-  ripples.splice(0, ripples.length, ...ripples.filter(r=>r.life>0));
-}
-
-// ── MOUSE (desktop) ──────────────────────────────────────────
-if(canvas && !isMobile){
+if(canvas){
   canvas.addEventListener('mousemove', e=>{
     const r=canvas.getBoundingClientRect();
     mouse.active=true;
     mouse.x=e.clientX-r.left; mouse.y=e.clientY-r.top;
     const w=worldFromScreen(mouse.x,mouse.y); mouse.wx=w.x; mouse.wy=w.y;
+    if(drag){ /* actualiza al render */ }
   });
+
   canvas.addEventListener('mousedown', e=>{
     const r=canvas.getBoundingClientRect();
     mouse.x=e.clientX-r.left; mouse.y=e.clientY-r.top;
+    // ¿clic en minimapa?
     if(mini.box && inMini(mouse.x,mouse.y)){ moveCamMini(mouse.x,mouse.y); return; }
-    if(e.button===0){
+
+    if(e.button===0){ // izquierdo
       if(buildKind){ placeBuilding(); return; }
       drag={x0:mouse.x, y0:mouse.y};
-    } else if(e.button===2){ rightClick(); }
+    } else if(e.button===2){ // derecho
+      rightClick();
+    }
   });
+
   canvas.addEventListener('mouseup', e=>{
     if(e.button===0 && drag){
-      const moved=Math.abs(mouse.x-drag.x0)+Math.abs(mouse.y-drag.y0);
-      if(moved<6) clickSelect(); else boxSelect();
+      const moved = Math.abs(mouse.x-drag.x0)+Math.abs(mouse.y-drag.y0);
+      if(moved<6) clickSelect();
+      else boxSelect();
       drag=null;
     }
   });
   canvas.addEventListener('contextmenu', e=>e.preventDefault());
-}
-
-// ── TOUCH (móvil) ────────────────────────────────────────────
-// Esquema:
-//   Tap rápido (<320ms, sin mover) →
-//     · con unidades seleccionadas y tap en suelo/enemigo → rightClick (mover/atacar)
-//     · en unidad propia → clickSelect
-//     · en vacío sin selección → clickSelect (deseleccionar)
-//   Long-press (≥380ms, sin mover) → rightClick siempre (mover/atacar/recolectar)
-//   Arrastrar 1 dedo → pan de cámara
-//   2 dedos → pan de cámara con ambos
-if(canvas && isMobile){
-  const LONG_MS  = 380;   // ms para long-press
-  const MOVE_THR = 12;    // px de movimiento que cancela tap/long-press
-  const TAP_R    = 22;    // radio de selección táctil (más grande que mouse)
-
-  let T = {               // estado de toque principal
-    active:false, id:-1,
-    sx:0, sy:0,           // posición inicio
-    lx:0, ly:0,           // posición actual
-    t0:0,                 // timestamp inicio
-    panning:false,
-    timer:null,
-  };
-  let T2 = {active:false, id:-1, lx:0, ly:0}; // segundo dedo
-
-  function setMouse(sx, sy){
-    mouse.x=sx; mouse.y=sy; mouse.active=true;
-    const w=worldFromScreen(sx,sy); mouse.wx=w.x; mouse.wy=w.y;
-  }
-  function cancelLong(){ clearTimeout(T.timer); T.timer=null; }
-
-  canvas.addEventListener('touchstart', e=>{
-    e.preventDefault(); SFX.resume();
-
-    // Segundo dedo → pan 2 dedos
-    if(e.touches.length===2){
-      cancelLong();
-      T.panning=true;
-      const t2=e.touches[1];
-      const r=canvas.getBoundingClientRect();
-      T2.active=true; T2.id=t2.identifier;
-      T2.lx=t2.clientX-r.left; T2.ly=t2.clientY-r.top;
-      return;
-    }
-
-    const t=e.touches[0];
-    const r=canvas.getBoundingClientRect();
-    const sx=t.clientX-r.left, sy=t.clientY-r.top;
-
-    T.active=true; T.id=t.identifier; T.panning=false;
-    T.sx=T.lx=sx; T.sy=T.ly=sy; T.t0=Date.now();
-    setMouse(sx,sy);
-
-    // ¿minimapa?
-    if(mini.box && inMini(sx,sy)){ moveCamMini(sx,sy); T.active=false; return; }
-
-    // Long-press: dispara rightClick con ripple visual
-    T.timer=setTimeout(()=>{
-      if(!T.active||T.panning) return;
-      showRipple(T.lx, T.ly);
-      setMouse(T.lx, T.ly);
-      rightClick();
-      T.active=false;
-    }, LONG_MS);
-
-  },{passive:false});
-
-  canvas.addEventListener('touchmove', e=>{
-    e.preventDefault();
-
-    // Pan con 2 dedos
-    if(e.touches.length===2 && T2.active){
-      const r=canvas.getBoundingClientRect();
-      const t2=[...e.touches].find(t=>t.identifier===T2.id);
-      if(t2){
-        const nx=t2.clientX-r.left, ny=t2.clientY-r.top;
-        // usa la media de los dos dedos para pan más suave
-        const t1=[...e.touches].find(t=>t.identifier===T.id);
-        if(t1){
-          const nx1=t1.clientX-r.left, ny1=t1.clientY-r.top;
-          const cx=(nx+nx1)/2, cy=(ny+ny1)/2;
-          const px=(T2.lx+T.lx)/2, py=(T2.ly+T.ly)/2;
-          cam.x=clamp(cam.x-(cx-px),0,Math.max(0,MAP_W-view.w));
-          cam.y=clamp(cam.y-(cy-py),0,Math.max(0,MAP_H-view.h));
-        }
-        T2.lx=nx; T2.ly=ny;
-      }
-      return;
-    }
-
-    const t=[...e.touches].find(t=>t.identifier===T.id);
-    if(!t||!T.active) return;
-    const r=canvas.getBoundingClientRect();
-    const nx=t.clientX-r.left, ny=t.clientY-r.top;
-    const dx=nx-T.lx, dy=ny-T.ly;
-    const moved=Math.abs(nx-T.sx)+Math.abs(ny-T.sy);
-
-    if(moved>MOVE_THR){
-      cancelLong();
-      T.panning=true;
-      cam.x=clamp(cam.x-dx,0,Math.max(0,MAP_W-view.w));
-      cam.y=clamp(cam.y-dy,0,Math.max(0,MAP_H-view.h));
-    }
-    T.lx=nx; T.ly=ny;
-    setMouse(nx,ny);
-  },{passive:false});
-
-  canvas.addEventListener('touchend', e=>{
-    e.preventDefault(); cancelLong();
-    T2.active=false;
-
-    const elapsed=Date.now()-T.t0;
-    const moved=Math.abs(T.lx-T.sx)+Math.abs(T.ly-T.sy);
-    const wasTap=!T.panning && moved<MOVE_THR && elapsed<LONG_MS;
-    T.active=false; T.panning=false;
-
-    if(!wasTap) return;
-
-    setMouse(T.lx, T.ly);
-
-    // Modo construcción: tap = colocar edificio
-    if(buildKind){ placeBuilding(); return; }
-
-    // ¿Toca unidad propia?
-    const S=renderState();
-    let tappedOwn=false;
-    for(const ent of S.ents){
-      if(ent.side!==mySide) continue;
-      if(dist2(mouse.wx,mouse.wy,ent.x,ent.y)<(DEFS[ent.kind].r+TAP_R)**2){ tappedOwn=true; break; }
-    }
-
-    if(tappedOwn){
-      // Tap en unidad propia → seleccionar
-      clickSelectTouch(TAP_R);
-    } else if(sel.size>0){
-      // Tap en suelo/enemigo con selección → mover/atacar
-      rightClick();
-    } else {
-      // Tap en vacío sin selección → deseleccionar
-      sel.clear(); refreshPanel();
-    }
-  },{passive:false});
-
-  canvas.addEventListener('touchcancel', e=>{ cancelLong(); T.active=false; T2.active=false; },{passive:false});
-}
-
-// Versión táctil de clickSelect con radio más grande
-function clickSelectTouch(extraR=16){
-  const S=renderState(); sel.clear();
-  let pick=null, bd=Infinity;
-  for(const e of S.ents){
-    if(e.side!==mySide) continue;
-    const dd=dist2(mouse.wx,mouse.wy,e.x,e.y);
-    if(dd<(DEFS[e.kind].r+extraR)**2 && dd<bd){ bd=dd; pick=e; }
-  }
-  if(pick) sel.add(pick.id);
-  refreshPanel();
 }
 
 function inMini(x,y){ const b=mini.box; return b && x>=b.x0&&x<=b.x0+b.mw&&y>=b.y0&&y<=b.y0+b.mh; }
@@ -2038,18 +1380,7 @@ function rightClick(){
 
   if(tgt){ issue({type:'attack', ids:unitIds, targetId:tgt.id}); }
   else if(node && selHasVillager()){ const vIds=unitIds.filter(id=>{const e=entById2(S,id);return e&&e.kind==='villager';}); issue({type:'gather', ids:vIds, nodeId:node.id}); }
-  else {
-    // Formación: distribuye unidades en rejilla alrededor del destino
-    if(unitIds.length > 1){
-      const units = unitIds.map(id=>entById2(S,id)).filter(Boolean);
-      const assigned = computeFormationPositions(units, mouse.wx, mouse.wy);
-      for(const {unit, pos} of assigned){
-        issue({type:'move', ids:[unit.id], x:pos.x, y:pos.y});
-      }
-    } else {
-      issue({type:'move', ids:unitIds, x:mouse.wx, y:mouse.wy});
-    }
-  }
+  else { issue({type:'move', ids:unitIds, x:mouse.wx, y:mouse.wy}); }
 }
 function entById2(S,id){ for(const e of S.ents) if(e.id===id) return e; return null; }
 
@@ -2165,7 +1496,6 @@ function onSnapshot(s){
 // ---------- Arranque / menús ----------
 function startGame(opts){
   mode=opts.mode; mySide=opts.side; enemySide = mySide==='red'?'blue':'red';
-  SFX.init(); SFX.resume();
   resize();
   if(mode==='client'){
     // el cliente no simula; espera snapshots
@@ -2179,29 +1509,16 @@ function startGame(opts){
   document.getElementById('hud').style.display='block';
   document.getElementById('panel').style.display='flex';
   setText('p1name', COLOR[mySide].name);
-  // Badge de sala solo en multijugador
-  if(mode!=='sp' && _currentRoomCode){
-    updateRoomBadge(_currentRoomCode, mode==='host'?'⏳ esperando…':'⏳ conectando…');
-  }
   // espera a tener algo que centrar
   const c=setInterval(()=>{ if(renderState()&&renderState().ents&&renderState().ents.length){ centerCamOnBase(); clearInterval(c);} },100);
   running=true; lastT=0; simAcc=0; snapAcc=0;
   requestAnimationFrame(loop);
 }
 
-function updateRoomBadge(code, status){
-  const badge = document.getElementById('roomBadge');
-  if(!badge) return;
-  badge.style.display = 'flex';
-  setText('roomBadgeCode', code);
-  setText('roomBadgeStatus', status);
-}
-
 function showEnd(winner){
   if(document.getElementById('endScreen').style.display==='flex') return;
   running=false;
   const won = winner===mySide;
-  SFX.play(won?'victory':'defeat');
   document.getElementById('endTitle').textContent = won?'¡VICTORIA!':'DERROTA';
   document.getElementById('endTitle').style.color = won?'#7CFC00':'#ff5555';
   document.getElementById('endSub').textContent = won
@@ -2211,88 +1528,28 @@ function showEnd(winner){
 }
 
 // Exponer a la UI (index.html)
-let _currentRoomCode = '';
-let _inviteUrl = '';
-
 window.REINOS = {
   startSolo(side){ startGame({mode:'sp', side}); },
-
   hostGame(){
     const code = Net.makeCode();
-    _currentRoomCode = code;
-    _inviteUrl = location.origin + location.pathname + '?sala=' + code;
-    history.replaceState(null, '', '?sala=' + code);
-
-    Net.onStatus = (t) => {
-      setText('overlayStatus', t);
-      updateRoomBadge(code, t);
-    };
-    Net.onPeer = () => {
-      setText('overlayStatus', '✅ ¡Nelson conectado!');
-      updateRoomBadge(code, '✅ Nelson online');
-      SFX.play('train');
-    };
+    document.getElementById('roomCode').textContent = code;
+    Net.onPeer = ()=>{ /* listo */ };
     Net.host(code);
+    Net.onStatus = (t)=>setText('netStatus', t);
+    document.getElementById('hostWait').style.display='block';
+    // el host es LEÓN (rojo). arranca de inmediato; el cliente se une cuando quiera.
     startGame({mode:'host', side:'red'});
-
-    // Populate and show overlay (outside menu, on top of canvas)
-    setText('overlayCode', code);
-    setText('overlayLink', _inviteUrl);
-    const ov = document.getElementById('inviteOverlay');
-    const shareBtn = document.getElementById('overlayShareBtn');
-    const copyBtn  = document.getElementById('overlayCopyBtn');
-    if(shareBtn) shareBtn.style.display = navigator.share ? 'flex' : 'none';
-    if(copyBtn)  copyBtn.style.display  = navigator.share ? 'none' : 'flex';
-    if(ov) ov.style.display = 'flex';
   },
-
   joinGame(code){
     if(!code) return;
-    code = code.trim().toUpperCase();
-    _currentRoomCode = code;
-    Net.onStatus = (t) => {
-      setText('netStatus2', t);
-      updateRoomBadge(code, t);
-    };
-    Net.onPeer = () => {
-      setText('netStatus2', '✅ ¡Conectado con León!');
-      updateRoomBadge(code, '✅ León online');
-    };
+    code=code.trim().toUpperCase();
+    Net.onStatus=(t)=>setText('netStatus2', t);
     Net.join(code);
+    Net.onPeer=()=>{ /* conectado */ };
+    // el que se une es NELSON (azul)
     startGame({mode:'client', side:'blue'});
   },
-
-  copyLink(){
-    navigator.clipboard.writeText(_inviteUrl).then(()=>{
-      const btn = document.getElementById('btnCopy');
-      btn.innerHTML = '✅ COPIADO<small>pégalo en WhatsApp</small>';
-      setTimeout(()=>{ btn.innerHTML='📋 COPIAR LINK<small>envíaselo al primo</small>'; }, 2500);
-    }).catch(()=>{
-      // fallback
-      prompt('Copia este link:', _inviteUrl);
-    });
-  },
-
-  shareLink(){
-    if(navigator.share){
-      navigator.share({ title:'REINOS — te invito a jugar', url: _inviteUrl });
-    }
-  },
-
-  closeInvite(){
-    const ov = document.getElementById('inviteOverlay');
-    if(ov) ov.style.display = 'none';
-  },
-
-  goHome(){
-    history.replaceState(null, '', location.pathname);
-    location.reload();
-  },
-
-  restart(){
-    history.replaceState(null, '', location.pathname);
-    location.reload();
-  },
+  restart(){ location.reload(); },
 };
 
 // init
