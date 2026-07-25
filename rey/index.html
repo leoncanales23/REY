@@ -2,54 +2,58 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#05080a">
+<meta name="description" content="REINOS, estrategia en tiempo real para jugar solo o contra un rival por conexión P2P.">
+<meta name="color-scheme" content="dark">
 <title>REINOS — Nelson vs León</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/reinos-192.png" sizes="192x192">
+<link rel="apple-touch-icon" href="icons/reinos-192.png">
 <link rel="stylesheet" href="style.css">
 </head>
 <body class="crt">
-
-  <canvas id="game"></canvas>
-
-  <!-- ====== MENÚ ====== -->
+  <canvas id="game" aria-label="Campo de batalla de REINOS"></canvas>
   <div id="menu">
     <div class="logo">
       <h1>REINOS</h1>
       <div class="sub">NELSON &nbsp;⚔&nbsp; LEÓN</div>
-      <div class="tag">// estrategia en tiempo real · estilo LAN //</div>
+      <div class="tag">// estrategia en tiempo real · edición next level //</div>
     </div>
-
     <div class="card">
+      <div class="status-row">
+        <span id="networkBadge" class="badge" data-state="online">RED DISPONIBLE</span>
+        <span class="badge">P2P · HOST AUTORITATIVO</span>
+      </div>
       <h2>UN JUGADOR</h2>
       <div class="row">
-        <button class="btn red" onclick="REINOS.startSolo('red')">JUGAR COMO LEÓN<small>vs CPU (azul)</small></button>
-        <button class="btn blue" onclick="REINOS.startSolo('blue')">JUGAR COMO NELSON<small>vs CPU (rojo)</small></button>
+        <button class="btn red" onclick="REINOS.startSolo('red')">JUGAR COMO LEÓN<small>vs CPU azul</small></button>
+        <button class="btn blue" onclick="REINOS.startSolo('blue')">JUGAR COMO NELSON<small>vs CPU roja</small></button>
       </div>
-
       <div class="divider">— · · · —</div>
-
-      <h2>JUGAR CON EL PRIMO (ONLINE)</h2>
+      <h2>DUELO ONLINE</h2>
       <div class="row">
         <button class="btn" onclick="REINOS.hostGame()">CREAR SALA<small>tú eres LEÓN</small></button>
       </div>
-      <div id="hostWait">
+      <div id="hostWait" aria-live="polite">
         Código de sala: <span id="roomCode">— — —</span><br>
         <span id="netStatus">listo</span><br>
-        <span class="hint">Pásale este código al primo. Ya puedes empezar a juntar recursos mientras llega.</span>
+        <button id="copyInviteMenu" class="mini-btn" type="button">COPIAR INVITACIÓN</button>
+        <span class="hint">Puedes reunir recursos mientras llega el rival.</span>
       </div>
-
-      <div class="row" style="margin-top:12px;">
-        <input class="code" id="joinInput" placeholder="REINO-0000" maxlength="12">
+      <div class="row join-row">
+        <label class="sr-only" for="joinInput">Código de sala</label>
+        <input class="code" id="joinInput" placeholder="REINO-ABC234" maxlength="12" autocomplete="off" spellcheck="false">
         <button class="btn blue" onclick="REINOS.joinGame(document.getElementById('joinInput').value)">UNIRME<small>serás NELSON</small></button>
       </div>
-      <div id="netStatus2" style="margin-top:6px;"></div>
-
-      <div class="hint">
-        Objetivo: junta 🪙 oro y 🪵 madera, construye, entrena ejército y destruye el castillo enemigo.
+      <div id="netStatus2" aria-live="polite"></div>
+      <div class="menu-tools">
+        <button id="fullscreenBtn" class="mini-btn" type="button">PANTALLA COMPLETA</button>
+        <button id="installBtn" class="mini-btn" type="button" hidden>INSTALAR JUEGO</button>
       </div>
+      <div class="hint">Junta 🪙 oro y 🪵 madera, construye tu base, forma un ejército y derriba el castillo enemigo.</div>
     </div>
   </div>
-
-  <!-- ====== HUD ====== -->
   <div id="hud">
     <div class="stat" id="p1name">LEÓN</div>
     <div class="stat gold">🪙 <span id="gold">0</span></div>
@@ -57,30 +61,18 @@
     <div class="stat pop">👥 <span id="pop">0/10</span></div>
     <div class="stat" id="enemyInfo"></div>
   </div>
-
-  <!-- ====== PANEL DE COMANDOS ====== -->
-  <div id="panel">
-    <div id="selInfo">— sin selección —</div>
-    <div id="cmds"></div>
+  <div id="matchTools" hidden>
+    <span id="connectionBadge" class="badge" data-state="waiting">SOLO</span>
+    <button id="copyInviteHud" class="hud-btn" type="button">INVITAR</button>
+    <button id="fullscreenHud" class="hud-btn" type="button" aria-label="Pantalla completa">⛶</button>
   </div>
-
-  <div class="controls">
-    WASD / flechas / bordes: mover cámara<br>
-    Click izq: seleccionar · arrastrar: caja<br>
-    Click der: mover / atacar / recolectar<br>
-    Aldeano → Q casa · E cuartel · R torre
-  </div>
-
-  <!-- ====== FIN ====== -->
-  <div id="endScreen">
-    <div id="endTitle">FIN</div>
-    <div id="endSub"></div>
-    <button class="btn" style="max-width:240px;" onclick="REINOS.restart()">VOLVER AL MENÚ</button>
-  </div>
-
-  <!-- PeerJS para el multijugador P2P -->
-  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <div id="panel"><div id="selInfo">— sin selección —</div><div id="cmds"></div></div>
+  <div class="controls">WASD / flechas / bordes: mover cámara<br>Click izq: seleccionar · arrastrar: caja<br>Click der: mover / atacar / recolectar<br>Aldeano → Q casa · E cuartel · R torre<br>F flow field · G niebla de guerra</div>
+  <div id="endScreen"><div id="endTitle">FIN</div><div id="endSub"></div><button class="btn" style="max-width:240px;" onclick="REINOS.restart()">VOLVER AL MENÚ</button></div>
+  <noscript>REINOS necesita JavaScript para ejecutar la simulación.</noscript>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" crossorigin="anonymous"></script>
   <script src="net.js"></script>
   <script src="game.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
