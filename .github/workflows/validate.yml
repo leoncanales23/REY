@@ -1,0 +1,23 @@
+name: Validate REINOS
+on:
+  pull_request:
+  push:
+    branches: [main, "feat/**"]
+permissions:
+  contents: read
+jobs:
+  static-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check JavaScript syntax
+        run: |
+          node --check rey/game.js
+          node --check rey/net.js
+          node --check rey/app.js
+          node --check rey/sw.js
+      - name: Validate app shell and config
+        run: node scripts/validate.mjs
