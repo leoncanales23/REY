@@ -15,6 +15,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Align one-shot transformer
+        run: |
+          sed -i "s/Validación estática y contrato de salas de REINOS completados\./Validación estática, contrato de salas y Crónica de Guerra completados\./" scripts/apply-era-conquista.mjs
       - name: Apply source transformation
         run: node scripts/apply-era-conquista.mjs
       - name: Validate generated game
