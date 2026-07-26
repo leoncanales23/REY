@@ -1,0 +1,137 @@
+.chronicle-dialog{
+  width:min(760px,94vw);
+  max-height:88vh;
+  padding:0;
+  color:var(--ink);
+  background:transparent;
+  border:0;
+}
+.chronicle-dialog::backdrop{
+  background:rgba(2,5,3,.84);
+  backdrop-filter:blur(5px);
+}
+.chronicle-shell{
+  display:flex;
+  flex-direction:column;
+  max-height:88vh;
+  overflow:hidden;
+  padding:20px;
+  background:linear-gradient(145deg,rgba(10,25,18,.98),rgba(4,10,8,.98));
+  border:2px solid #315b43;
+  border-radius:10px;
+  box-shadow:0 0 50px rgba(66,255,141,.12);
+}
+.chronicle-header{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:18px;
+  padding-bottom:14px;
+  border-bottom:1px solid var(--line);
+}
+.chronicle-kicker{
+  display:block;
+  margin-bottom:7px;
+  color:#6f9b7d;
+  font-size:16px;
+  letter-spacing:3px;
+}
+.chronicle-header h2{
+  margin:0;
+  color:var(--amber);
+  font-family:'Press Start 2P',monospace;
+  font-size:clamp(15px,3vw,22px);
+  line-height:1.4;
+}
+.chronicle-stats,.battle-summary-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+}
+.chronicle-stats{
+  padding:16px 0;
+}
+.chronicle-stat{
+  min-width:0;
+  padding:10px;
+  text-align:center;
+  background:rgba(13,31,22,.78);
+  border:1px solid #294d38;
+  border-radius:6px;
+}
+.chronicle-stat strong{
+  display:block;
+  overflow:hidden;
+  color:var(--green);
+  font-size:25px;
+  line-height:1.1;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.chronicle-stat span{
+  display:block;
+  margin-top:5px;
+  color:#70947b;
+  font-size:14px;
+  letter-spacing:.5px;
+}
+.chronicle-list{
+  display:flex;
+  flex:1;
+  flex-direction:column;
+  gap:9px;
+  min-height:150px;
+  overflow:auto;
+  padding-right:5px;
+}
+.chronicle-entry{
+  padding:12px 14px;
+  background:rgba(4,12,8,.78);
+  border:1px solid var(--line);
+  border-left-width:4px;
+  border-radius:5px;
+}
+.chronicle-entry.victory{border-left-color:var(--green)}
+.chronicle-entry.defeat{border-left-color:var(--red)}
+.chronicle-entry-head{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:center;
+}
+.chronicle-entry.victory .chronicle-entry-head strong{color:var(--green)}
+.chronicle-entry.defeat .chronicle-entry-head strong{color:var(--red)}
+.chronicle-entry-head strong{font-family:'Press Start 2P',monospace;font-size:11px}
+.chronicle-entry-head time{color:#607d69;font-size:15px}
+.chronicle-entry-details{margin-top:7px;color:#a3c7ad;font-size:18px}
+.chronicle-empty{
+  margin:auto;
+  padding:24px;
+  color:#6f9179;
+  font-size:20px;
+  text-align:center;
+}
+.chronicle-actions{
+  display:flex;
+  justify-content:flex-end;
+  padding-top:14px;
+}
+.mini-btn.danger:hover{
+  color:var(--red);
+  border-color:var(--red);
+}
+#battleSummary{
+  width:min(620px,90vw);
+}
+.battle-summary-grid{
+  grid-template-columns:repeat(4,minmax(0,1fr));
+}
+.battle-summary-grid .chronicle-stat{
+  background:rgba(8,20,14,.9);
+}
+@media(max-width:620px){
+  .chronicle-shell{padding:14px}
+  .chronicle-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .battle-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .chronicle-entry-head{align-items:flex-start;flex-direction:column;gap:5px}
+}
