@@ -6,6 +6,7 @@ on:
     branches: [main]
 permissions:
   contents: write
+  pull-requests: write
 jobs:
   transform:
     if: ${{ github.event_name == 'pull_request' || !contains(github.event.head_commit.message, '[era-generated]') }}
@@ -22,7 +23,29 @@ jobs:
         run: |
           sed -i "s/Validación estática y contrato de salas de REINOS completados\./Validación estática, contrato de salas y Crónica de Guerra completados\./" scripts/apply-era-conquista.mjs
       - name: Apply source transformation
-        run: node scripts/apply-era-conquista.mjs
+        id: transform
+        continue-on-error: true
+        run: |
+          if grep -q "const AGE_DEFS =" rey/game.js; then
+            echo "Era de Conquista ya aplicada"
+            exit 0
+          fi
+          node scripts/apply-era-conquista.mjs > era-transform.log 2>&1
+      - name: Report transformer failure
+        if: ${{ steps.transform.outcome == 'failure' && github.event_name == 'pull_request' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "### 🔧 Diagnóstico del transformador"
+            echo '```text'
+            tail -n 100 era-transform.log
+            echo '```'
+          } > era-comment.md
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file era-comment.md
+      - name: Stop after transformer failure
+        if: ${{ steps.transform.outcome == 'failure' }}
+        run: exit 1
       - name: Validate generated game
         run: |
           node --check rey/game.js
@@ -33,6 +56,10 @@ jobs:
           node scripts/validate.mjs
       - name: Commit generated source
         run: |
+          if git diff --quiet; then
+            echo "Sin cambios nuevos"
+            exit 0
+          fi
           git config user.name "reinos-conquest-bot"
           git config user.email "actions@users.noreply.github.com"
           git add rey README.md scripts/validate.mjs
