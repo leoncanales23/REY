@@ -27,9 +27,17 @@
         <span class="badge">P2P · HOST AUTORITATIVO</span>
       </div>
       <h2>UN JUGADOR</h2>
+      <div class="difficulty-picker">
+        <label for="difficultySelect">DIFICULTAD DE LA IA</label>
+        <select id="difficultySelect">
+          <option value="explorer">Explorador · aprende y respira</option>
+          <option value="warrior" selected>Guerrero · batalla equilibrada</option>
+          <option value="conqueror">Conquistador · economía y ataques feroces</option>
+        </select>
+      </div>
       <div class="row">
-        <button class="btn red" onclick="REINOS.startSolo('red')">JUGAR COMO LEÓN<small>vs CPU azul</small></button>
-        <button class="btn blue" onclick="REINOS.startSolo('blue')">JUGAR COMO NELSON<small>vs CPU roja</small></button>
+        <button class="btn red" onclick="REINOS.startSolo('red', document.getElementById('difficultySelect').value)">JUGAR COMO LEÓN<small>vs CPU azul</small></button>
+        <button class="btn blue" onclick="REINOS.startSolo('blue', document.getElementById('difficultySelect').value)">JUGAR COMO NELSON<small>vs CPU roja</small></button>
       </div>
       <div class="divider">— · · · —</div>
       <h2>DUELO ONLINE</h2>
@@ -58,6 +66,7 @@
   </div>
   <div id="hud">
     <div class="stat" id="p1name">LEÓN</div>
+    <div class="stat age" id="ageInfo">EDAD DE ALDEA</div>
     <div class="stat gold">🪙 <span id="gold">0</span></div>
     <div class="stat wood">🪵 <span id="wood">0</span></div>
     <div class="stat pop">👥 <span id="pop">0/10</span></div>
@@ -69,7 +78,7 @@
     <button id="fullscreenHud" class="hud-btn" type="button" aria-label="Pantalla completa">⛶</button>
   </div>
   <div id="panel"><div id="selInfo">— sin selección —</div><div id="cmds"></div></div>
-  <div class="controls">WASD / flechas / bordes: mover cámara<br>Click izq: seleccionar · arrastrar: caja<br>Click der: mover / atacar / recolectar<br>Aldeano → Q casa · E cuartel · R torre<br>F flow field · G niebla de guerra</div>
+  <div class="controls">WASD / flechas / bordes: mover cámara<br>Click izq: seleccionar · arrastrar: caja<br>Click der: mover / atacar / recolectar<br>Aldeano → Q casa · E cuartel · R torre<br>Castillo y cuartel → edades y tecnologías<br>F flow field · G niebla de guerra</div>
   <div id="endScreen">
     <div id="endTitle">FIN</div>
     <div id="endSub"></div>

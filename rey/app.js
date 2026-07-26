@@ -123,8 +123,8 @@
     if (!window.REINOS) return;
 
     const originalSolo = REINOS.startSolo.bind(REINOS);
-    REINOS.startSolo = (side) => {
-      originalSolo(side);
+    REINOS.startSolo = (side, difficulty) => {
+      originalSolo(side, difficulty);
       showMatchShell();
       setConnectionState('SOLO', true);
     };

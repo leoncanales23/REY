@@ -46,6 +46,13 @@
     return 'Un jugador';
   }
 
+  function difficultyName(value) {
+    if (value === 'explorer') return 'Explorador';
+    if (value === 'conqueror') return 'Conquistador';
+    if (value === 'human') return 'Rival humano';
+    return 'Guerrero';
+  }
+
   function formatDuration(durationMs) {
     const totalSeconds = Math.max(0, Math.round(durationMs / 1000));
     const minutes = Math.floor(totalSeconds / 60);
@@ -66,13 +73,14 @@
     }
   }
 
-  function beginBattle(mode, side, room = null) {
+  function beginBattle(mode, side, room = null, difficulty = 'warrior') {
     activeBattle = {
       id: battleId(),
       startedAt: Date.now(),
       mode,
       side: normalizeSide(side),
       room: room || null,
+      difficulty: mode === 'sp' ? difficulty : 'human',
     };
     finalizedBattleId = null;
     sessionStorage.setItem(ACTIVE_KEY, JSON.stringify(activeBattle));
@@ -185,7 +193,7 @@
 
       const details = document.createElement('div');
       details.className = 'chronicle-entry-details';
-      details.textContent = `${sideName(entry.side)} · ${modeName(entry.mode)} · ${formatDuration(entry.durationMs)}`;
+      details.textContent = `${sideName(entry.side)} · ${modeName(entry.mode)} · ${difficultyName(entry.difficulty)} · Edad ${entry.finalAge||1} · ${formatDuration(entry.durationMs)}`;
 
       article.append(header, details);
       list.appendChild(article);
@@ -203,6 +211,8 @@
     appendStat(grid, 'duración', formatDuration(entry.durationMs));
     appendStat(grid, 'modo', modeName(entry.mode));
     appendStat(grid, 'reino', sideName(entry.side));
+    appendStat(grid, 'dificultad', difficultyName(entry.difficulty));
+    appendStat(grid, 'edad final', entry.finalAge||1);
     appendStat(grid, 'racha', entry.result === 'victory' ? streak : 0);
     summary.appendChild(grid);
   }
@@ -215,8 +225,11 @@
     if (!titleText.includes('VICTORIA') && !titleText.includes('DERROTA')) return;
 
     finalizedBattleId = activeBattle.id;
+    const meta = typeof REINOS.getMatchMeta === 'function' ? REINOS.getMatchMeta() : {};
     const entry = {
       ...activeBattle,
+      difficulty: meta.difficulty || activeBattle.difficulty || 'warrior',
+      finalAge: meta.age || 1,
       finishedAt: Date.now(),
       durationMs: Math.max(1000, Date.now() - activeBattle.startedAt),
       result: titleText.includes('VICTORIA') ? 'victory' : 'defeat',
@@ -264,9 +277,9 @@
     if (!window.REINOS) return;
 
     const originalSolo = REINOS.startSolo.bind(REINOS);
-    REINOS.startSolo = (side) => {
-      originalSolo(side);
-      beginBattle('sp', side);
+    REINOS.startSolo = (side, difficulty) => {
+      originalSolo(side, difficulty);
+      beginBattle('sp', side, null, difficulty);
     };
 
     const originalHost = REINOS.hostGame.bind(REINOS);

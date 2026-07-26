@@ -76,6 +76,7 @@ const Net = {
     const entityId = (value) => Number.isInteger(value) && value > 0;
     const allowedUnits = new Set(['villager', 'swordsman', 'archer', 'knight']);
     const allowedBuildings = new Set(['house', 'barracks', 'tower']);
+    const allowedResearch = new Set(['age2', 'age3', 'wheelbarrow', 'masonry', 'forgedBlades', 'fletching', 'cavalry']);
 
     switch (input.type) {
       case 'move':
@@ -102,6 +103,9 @@ const Net = {
       case 'train':
         if (!entityId(input.buildingId) || !allowedUnits.has(input.unit)) return null;
         return { type: 'train', buildingId: input.buildingId, unit: input.unit };
+      case 'research':
+        if (!entityId(input.buildingId) || !allowedResearch.has(input.researchId)) return null;
+        return { type: 'research', buildingId: input.buildingId, researchId: input.researchId };
       case 'rally':
         if (!entityId(input.buildingId) || !worldX(input.x) || !worldY(input.y)) return null;
         return { type: 'rally', buildingId: input.buildingId, x: Number(input.x), y: Number(input.y) };
