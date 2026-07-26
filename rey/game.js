@@ -1442,8 +1442,11 @@ function aiStep(dt){
 
   const threshold = profile.attackBase + Math.floor(G.time/profile.attackGrowth);
   const enemyCastle = G.ents.find(e=>e.side===mySide && e.kind==='castle');
-  const objectiveTarget=objectiveCount(G,side)<2?aiObjectiveTarget(side):null;
-  const attackTarget=objectiveTarget || enemyCastle;
+  const ownedObjectives=objectiveCount(G,side);
+  // AI_HOLD_SUPREMACY: no abandona los Bastiones mientras corre el contador.
+  const holdingSupremacy=ownedObjectives>=2 && G.dominance[side]>0;
+  const objectiveTarget=ownedObjectives<2?aiObjectiveTarget(side):null;
+  const attackTarget=holdingSupremacy?null:(objectiveTarget || enemyCastle);
   const requiredArmy=objectiveTarget?Math.max(3,threshold-1):threshold;
   if(attackTarget && army.length>=requiredArmy){
     const free = army.filter(u=>!u.order || u.order.type==='move' || (u.order.type==='attackmove'&&!entById(u.targetId)));
@@ -1560,9 +1563,6 @@ function render(){
   // terreno (pasto + tierra)
   drawGround();
 
-  // Bastiones neutrales: siempre conocidos por ambos reinos
-  for(const objective of (S.objectives||[])) drawObjective(objective);
-
   // nodos (árboles / oro) — solo si visibles o explorados
   for(const n of S.nodes){
     if(n.x<cam.x-50||n.x>cam.x+view.w+50||n.y<cam.y-50||n.y>cam.y+view.h+50) continue;
@@ -1604,6 +1604,11 @@ function render(){
 
   // Niebla de guerra encima del mapa
   if(fogEnabled) FOG.draw();
+
+  // OBJECTIVES_AFTER_FOG: los Bastiones son conocimiento estratégico público.
+  ctx.save(); ctx.translate(-cam.x,-cam.y);
+  for(const objective of (S.objectives||[])) drawObjective(objective);
+  ctx.restore();
 
   drawFlowFieldDebug();
 
