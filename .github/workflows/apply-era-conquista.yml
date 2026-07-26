@@ -21,7 +21,20 @@ jobs:
           node-version: 22
       - name: Align one-shot transformer
         run: |
-          sed -i "s/Validación estática y contrato de salas de REINOS completados\./Validación estática, contrato de salas y Crónica de Guerra completados\./" scripts/apply-era-conquista.mjs
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/apply-era-conquista.mjs')
+          source = path.read_text()
+          source = source.replace(
+              'Validación estática y contrato de salas de REINOS completados.',
+              'Validación estática, contrato de salas y Crónica de Guerra completados.',
+          )
+          source = source.replace(
+              "toast(`⚙ ${COLOR[side].name}: ${message}`);",
+              "toast('⚙ '+COLOR[side].name+': '+message);",
+          )
+          path.write_text(source)
+          PY
       - name: Apply source transformation
         id: transform
         continue-on-error: true
@@ -30,7 +43,8 @@ jobs:
             echo "Era de Conquista ya aplicada"
             exit 0
           fi
-          node scripts/apply-era-conquista.mjs > era-transform.log 2>&1
+          node --check scripts/apply-era-conquista.mjs > era-transform.log 2>&1
+          node scripts/apply-era-conquista.mjs >> era-transform.log 2>&1
       - name: Report transformer failure
         if: ${{ steps.transform.outcome == 'failure' && github.event_name == 'pull_request' }}
         env:
