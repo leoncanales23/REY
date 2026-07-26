@@ -84,10 +84,17 @@ for (const marker of ['const AGE_DEFS =', 'const RESEARCH =', "case 'research'",
 for (const marker of ['allowedResearch', "case 'research'"]) {
   if (!net.includes(marker)) throw new Error(`Contrato P2P de tecnologías incompleto: falta ${marker}`);
 }
-for (const id of ['difficultySelect', 'ageInfo']) {
+for (const id of ['difficultySelect', 'ageInfo', 'factionInfo', 'objectiveInfo']) {
   if (!html.includes(`id="${id}"`)) throw new Error(`Falta la interfaz de conquista #${id}`);
 }
 const sw = await readFile('rey/sw.js', 'utf8');
-if (!sw.includes('reinos-conquista-v3')) throw new Error('La PWA no renovó su caché para Era de Conquista');
+if (!sw.includes('reinos-asimetricos-v4')) throw new Error('La PWA no renovó su caché para Reinos Asimétricos');
 
-console.log('Validación estática, salas, crónica y Era de Conquista completadas.');
+for (const marker of ['const FACTIONS =', 'OBJECTIVE_DEFS', 'stepObjectives(dt)', "victoryReason='supremacy'", 'objectives: G.objectives', 'aiObjectiveTarget', 'FOG.update(mySide,S)']) {
+  if (!game.includes(marker)) throw new Error(`Reinos Asimétricos incompleto: falta ${marker}`);
+}
+for (const marker of ['victoryReasonName', 'finalObjectives', 'supremacyWins']) {
+  if (!chronicle.includes(marker)) throw new Error(`Crónica asimétrica incompleta: falta ${marker}`);
+}
+
+console.log('Validación estática, salas, crónica, Era de Conquista y Reinos Asimétricos completadas.');

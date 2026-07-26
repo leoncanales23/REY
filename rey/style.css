@@ -36,3 +36,10 @@ input.code{flex:2;font-family:'Press Start 2P',monospace;font-size:13px;letter-s
 button.cmd.research{border-color:#6b5a2f;background:linear-gradient(135deg,#15190e,#0c1a13)}
 button.cmd:disabled{cursor:not-allowed;opacity:.48;filter:saturate(.45);transform:none!important;box-shadow:none!important}
 @media(max-width:760px){.difficulty-picker{grid-template-columns:1fr}.difficulty-picker select{width:100%}#hud .age{order:5;width:100%;max-width:none;font-size:15px}}
+
+
+/* Reinos Asimétricos */
+#hud .faction{color:#ffd8a6;font-size:16px;letter-spacing:.8px}
+#hud .objectives{color:#ffe27a;font-size:17px;border-left:1px solid rgba(255,226,122,.35);padding-left:12px}
+.btn.red small{color:#d98f82}.btn.blue small{color:#8dbaf6}
+@media(max-width:980px){#hud .faction{display:none}#hud .objectives{order:6;width:100%;border-left:0;padding-left:0;font-size:15px}}
