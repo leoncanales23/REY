@@ -46,6 +46,14 @@
     return 'Un jugador';
   }
 
+  function factionName(side) {
+    return side === 'blue' ? 'Orden del Horizonte' : 'Legión del Rugido';
+  }
+
+  function victoryReasonName(value) {
+    return value === 'supremacy' ? 'Supremacía de Bastiones' : 'Castillo destruido';
+  }
+
   function difficultyName(value) {
     if (value === 'explorer') return 'Explorador';
     if (value === 'conqueror') return 'Conquistador';
@@ -140,6 +148,7 @@
       averageMs,
       currentStreak: currentStreak(history),
       bestStreak: calculateBestStreak(history),
+      supremacyWins: history.filter((entry) => entry.result === 'victory' && entry.victoryReason === 'supremacy').length,
     };
   }
 
@@ -167,6 +176,7 @@
     appendStat(statsContainer, 'efectividad', `${stats.winRate}%`);
     appendStat(statsContainer, 'racha actual', stats.currentStreak);
     appendStat(statsContainer, 'mejor racha', stats.bestStreak);
+    appendStat(statsContainer, 'supremacías', stats.supremacyWins);
     appendStat(statsContainer, 'duración media', formatDuration(stats.averageMs));
 
     list.replaceChildren();
@@ -193,7 +203,7 @@
 
       const details = document.createElement('div');
       details.className = 'chronicle-entry-details';
-      details.textContent = `${sideName(entry.side)} · ${modeName(entry.mode)} · ${difficultyName(entry.difficulty)} · Edad ${entry.finalAge||1} · ${formatDuration(entry.durationMs)}`;
+      details.textContent = `${sideName(entry.side)} · ${factionName(entry.side)} · ${modeName(entry.mode)} · ${difficultyName(entry.difficulty)} · ${victoryReasonName(entry.victoryReason)} · Edad ${entry.finalAge||1} · ${formatDuration(entry.durationMs)}`;
 
       article.append(header, details);
       list.appendChild(article);
@@ -213,6 +223,8 @@
     appendStat(grid, 'reino', sideName(entry.side));
     appendStat(grid, 'dificultad', difficultyName(entry.difficulty));
     appendStat(grid, 'edad final', entry.finalAge||1);
+    appendStat(grid, 'victoria por', victoryReasonName(entry.victoryReason));
+    appendStat(grid, 'bastiones', entry.finalObjectives||0);
     appendStat(grid, 'racha', entry.result === 'victory' ? streak : 0);
     summary.appendChild(grid);
   }
@@ -230,6 +242,10 @@
       ...activeBattle,
       difficulty: meta.difficulty || activeBattle.difficulty || 'warrior',
       finalAge: meta.age || 1,
+      faction: meta.faction || factionName(activeBattle.side),
+      victoryReason: meta.victoryReason || 'castle',
+      finalObjectives: meta.objectives || 0,
+      finalDominance: meta.dominance || 0,
       finishedAt: Date.now(),
       durationMs: Math.max(1000, Date.now() - activeBattle.startedAt),
       result: titleText.includes('VICTORIA') ? 'victory' : 'defeat',

@@ -76,6 +76,29 @@ const AI_PROFILES = {
   },
 };
 
+const FACTIONS = {
+  red: {
+    name:'LEGIÓN DEL RUGIDO', short:'RUGIDO',
+    description:'Presión cuerpo a cuerpo y aura del Rey León',
+    meleeAttack:1.10, kingAuraAttack:1.12, kingAuraSpeed:1.12, kingAuraRange:170,
+    capturePower:1.12,
+  },
+  blue: {
+    name:'ORDEN DEL HORIZONTE', short:'HORIZONTE',
+    description:'Alcance, visión y economía técnica de Nelson',
+    rangedRange:18, villagerGather:1.10, sight:1.15,
+    capturePower:1,
+  },
+};
+
+const OBJECTIVE_RADIUS = 92;
+const DOMINANCE_SECONDS = 75;
+const OBJECTIVE_DEFS = [
+  {id:'north', name:'BASTIÓN NORTE', x:MAP_W/2, y:400},
+  {id:'crown', name:'BASTIÓN DE LA CORONA', x:MAP_W/2, y:MAP_H/2},
+  {id:'south', name:'BASTIÓN SUR', x:MAP_W/2, y:MAP_H-400},
+];
+
 const COLOR = {
   red:  {main:'#ff3b3b', dark:'#7a1414', light:'#ff8a8a', name:'LEÓN'},
   blue: {main:'#3b8bff', dark:'#143a7a', light:'#8ac0ff', name:'NELSON'},
@@ -97,6 +120,8 @@ function freshState() {
       blue: {g:200, w:200, pop:0, cap:10, age:1, techs:{}, research:null},
     },
     ents: [], nodes: [], projectiles: [],
+    objectives: OBJECTIVE_DEFS.map((objective)=>({...objective, owner:null, control:0})),
+    dominance: {red:0, blue:0}, victoryReason:null,
     particles: [],   // sistema de partículas
   };
 }
@@ -115,6 +140,19 @@ function hasTech(side,id){ const r=sideState(side); return !!(r && r.techs && r.
 function ageOf(side){ const r=sideState(side); return r && r.age ? r.age : 1; }
 function canTrainUnit(side,unit){ return ageOf(side) >= (UNIT_AGE[unit] || 1); }
 function canBuildKind(side,kind){ return ageOf(side) >= (BUILDING_AGE[kind] || 1); }
+function factionOf(side){ return FACTIONS[side] || FACTIONS.red; }
+function objectiveCount(state,side){ return (state?.objectives||[]).filter((objective)=>objective.owner===side).length; }
+function kingAuraActive(e){
+  if(e.side!=='red' || e.building || e.kind==='villager' || e.kind==='king') return false;
+  const state=activeState(); if(!state) return false;
+  const king=state.ents.find((unit)=>unit.side===e.side && unit.kind==='king' && unit.hp>0);
+  return !!king && dist(e.x,e.y,king.x,king.y)<=factionOf(e.side).kingAuraRange;
+}
+function sightFor(e){
+  let value=DEFS[e.kind].sight || 80;
+  if(e.side==='blue') value*=factionOf(e.side).sight;
+  return value;
+}
 
 function maxHpFor(side,kind){
   let value=DEFS[kind].hp;
@@ -126,22 +164,27 @@ function attackFor(e){
   let value=DEFS[e.kind].atk || 0;
   if(hasTech(e.side,'forgedBlades') && ['swordsman','knight','king'].includes(e.kind)) value*=1.15;
   if(hasTech(e.side,'fletching') && ['archer','tower'].includes(e.kind)) value*=1.12;
+  if(e.side==='red' && ['swordsman','knight','king'].includes(e.kind)) value*=factionOf(e.side).meleeAttack;
+  if(kingAuraActive(e)) value*=factionOf(e.side).kingAuraAttack;
   if(isAiSide(e.side)) value*=aiProfile().combat;
   return value;
 }
 function rangeFor(e){
   let value=DEFS[e.kind].range || 0;
   if(hasTech(e.side,'fletching') && ['archer','tower'].includes(e.kind)) value+=20;
+  if(e.side==='blue' && ['archer','tower'].includes(e.kind)) value+=factionOf(e.side).rangedRange;
   return value;
 }
 function speedFor(e){
   let value=DEFS[e.kind].speed || 0;
   if(e.kind==='knight' && hasTech(e.side,'cavalry')) value*=1.18;
+  if(kingAuraActive(e)) value*=factionOf(e.side).kingAuraSpeed;
   return value;
 }
 function gatherRateFor(e){
   let value=DEFS[e.kind].gather || 0;
   if(hasTech(e.side,'wheelbarrow')) value*=1.25;
+  if(e.side==='blue' && e.kind==='villager') value*=factionOf(e.side).villagerGather;
   if(isAiSide(e.side)) value*=aiProfile().gather;
   return value;
 }
@@ -408,6 +451,7 @@ function validPlacement(x,y,r){
   if(!state||x<r||y<r||x>MAP_W-r||y>MAP_H-r) return false;
   for(const e of state.ents){ if(e.building && dist(x,y,e.x,e.y) < r+DEFS[e.kind].r+6) return false; }
   for(const n of state.nodes){ if(dist(x,y,n.x,n.y) < r+n.r+6) return false; }
+  for(const objective of (state.objectives||[])){ if(dist(x,y,objective.x,objective.y) < r+OBJECTIVE_RADIUS+8) return false; }
   return true;
 }
 
@@ -928,12 +972,12 @@ const FOG = {
     this.exp = new Uint8Array(N);
   },
 
-  update(side) {
-    if (!G) return;
+  update(side, state=activeState()) {
+    if (!state || !this.vis) return;
     this.vis.fill(0);
-    for (const e of G.ents) {
+    for (const e of state.ents) {
       if (e.side !== side) continue;
-      const sight = DEFS[e.kind].sight || 80;
+      const sight = sightFor(e);
       const cx = Math.floor(e.x / this.CELL);
       const cy = Math.floor(e.y / this.CELL);
       const cr = Math.ceil(sight / this.CELL);
@@ -981,11 +1025,72 @@ let fogEnabled = true; // toggle con tecla G
 // Rebuildea cost field cada 3s (edificios cambian poco)
 let ffRebuildT = 0;
 
+function objectivePower(e){
+  if(e.building || e.kind==='villager' || e.hp<=0) return 0;
+  let power=e.kind==='king'?2:e.kind==='knight'?1.3:1;
+  power*=factionOf(e.side).capturePower || 1;
+  return power;
+}
+function stepObjectives(dt){
+  for(const objective of G.objectives){
+    let red=0, blue=0;
+    for(const e of G.ents){
+      if(dist(e.x,e.y,objective.x,objective.y)>OBJECTIVE_RADIUS) continue;
+      const power=objectivePower(e);
+      if(e.side==='red') red+=power;
+      else if(e.side==='blue') blue+=power;
+    }
+    const pressure=red-blue;
+    const previous=objective.owner;
+    if(Math.abs(pressure)>0.05){
+      objective.control=clamp(objective.control+pressure*13*dt,-100,100);
+    } else if(!objective.owner){
+      objective.control*=Math.max(0,1-dt*0.18);
+    }
+    if(objective.control>=100) objective.owner='red';
+    else if(objective.control<=-100) objective.owner='blue';
+    else if(previous==='red' && objective.control<25) objective.owner=null;
+    else if(previous==='blue' && objective.control>-25) objective.owner=null;
+    if(previous!==objective.owner){
+      if(objective.owner) toast('⚑ '+COLOR[objective.owner].name+' capturó '+objective.name);
+      else if(previous) toast('⚔ '+objective.name+' fue neutralizado');
+    }
+  }
+
+  const redOwned=objectiveCount(G,'red'), blueOwned=objectiveCount(G,'blue');
+  G.res.red.g+=redOwned*1.2*dt; G.res.red.w+=redOwned*0.8*dt;
+  G.res.blue.g+=blueOwned*1.2*dt; G.res.blue.w+=blueOwned*0.8*dt;
+
+  for(const side of ['red','blue']){
+    const owned=side==='red'?redOwned:blueOwned;
+    if(owned>=2) G.dominance[side]+=dt;
+    else G.dominance[side]=Math.max(0,G.dominance[side]-dt*1.5);
+    if(G.dominance[side]>=DOMINANCE_SECONDS){
+      G.winner=side; G.victoryReason='supremacy';
+      return;
+    }
+  }
+}
+function aiObjectiveTarget(side){
+  const castle=G.ents.find((e)=>e.side===side && e.kind==='castle');
+  const candidates=G.objectives.filter((objective)=>objective.owner!==side);
+  candidates.sort((a,b)=>{
+    const enemyA=a.owner && a.owner!==side ? 0 : 1;
+    const enemyB=b.owner && b.owner!==side ? 0 : 1;
+    if(enemyA!==enemyB) return enemyA-enemyB;
+    if(!castle) return Math.abs(a.control)-Math.abs(b.control);
+    return dist2(castle.x,castle.y,a.x,a.y)-dist2(castle.x,castle.y,b.x,b.y);
+  });
+  return candidates[0] || null;
+}
+
 // ---------- Simulación ----------
 function step(dt){
   if(G.winner) return;
   G.time += dt; G.tick++;
   stepResearch(dt);
+  stepObjectives(dt);
+  if(G.winner) return;
 
   // Reconstruye cost field cada 3s
   ffRebuildT -= dt;
@@ -1059,7 +1164,7 @@ function step(dt){
 
   recalcPop();
 
-  if(castleDead){ G.winner = (castleDead==='red')?'blue':'red'; }
+  if(castleDead){ G.winner = (castleDead==='red')?'blue':'red'; G.victoryReason='castle'; }
 
   // IA (solo single player, controla al enemigo)
   if(mode==='sp'){ aiStep(dt); }
@@ -1083,7 +1188,7 @@ function stepUnit(e, dt){
   // Aggro automático para militares ociosos
   if(e.kind!=='villager' && (!o || o.type==='move'||o.type==='attackmove')){
     if(!entById(e.targetId)){
-      const enemy=nearestEnemy(e.side,e.x,e.y, o&&o.type==='attackmove'?d.sight:d.sight*0.7);
+      const enemy=nearestEnemy(e.side,e.x,e.y, o&&o.type==='attackmove'?sightFor(e):sightFor(e)*0.7);
       if(enemy) e.targetId=enemy.id;
     }
   }
@@ -1230,7 +1335,7 @@ function damage(t, amount, fromSide){
   }
   // contraataque
   if(t.hp>0 && !t.building && !entById(t.targetId)){
-    const a=nearestEnemy(t.side,t.x,t.y, DEFS[t.kind].sight);
+    const a=nearestEnemy(t.side,t.x,t.y, sightFor(t));
     if(a && t.kind!=='villager') t.targetId=a.id;
   }
 }
@@ -1337,9 +1442,15 @@ function aiStep(dt){
 
   const threshold = profile.attackBase + Math.floor(G.time/profile.attackGrowth);
   const enemyCastle = G.ents.find(e=>e.side===mySide && e.kind==='castle');
-  if(enemyCastle && army.length>=threshold){
+  const ownedObjectives=objectiveCount(G,side);
+  // AI_HOLD_SUPREMACY: no abandona los Bastiones mientras corre el contador.
+  const holdingSupremacy=ownedObjectives>=2 && G.dominance[side]>0;
+  const objectiveTarget=ownedObjectives<2?aiObjectiveTarget(side):null;
+  const attackTarget=holdingSupremacy?null:(objectiveTarget || enemyCastle);
+  const requiredArmy=objectiveTarget?Math.max(3,threshold-1):threshold;
+  if(attackTarget && army.length>=requiredArmy){
     const free = army.filter(u=>!u.order || u.order.type==='move' || (u.order.type==='attackmove'&&!entById(u.targetId)));
-    for(const u of free){ u.order={type:'attackmove', x:enemyCastle.x, y:enemyCastle.y}; u.tx=enemyCastle.x; u.ty=enemyCastle.y; u.moving=true; }
+    for(const u of free){ u.order={type:'attackmove', x:attackTarget.x, y:attackTarget.y}; u.tx=attackTarget.x; u.ty=attackTarget.y; u.moving=true; }
   }
 }
 function aiBuild(side, castle, kind){
@@ -1444,7 +1555,7 @@ function render(){
   ctx.clearRect(0,0,view.w,view.h);
 
   // Actualiza fog de guerra
-  if(fogEnabled) FOG.update(mySide);
+  if(fogEnabled) FOG.update(mySide,S);
 
   ctx.save();
   ctx.translate(-cam.x,-cam.y);
@@ -1494,6 +1605,11 @@ function render(){
   // Niebla de guerra encima del mapa
   if(fogEnabled) FOG.draw();
 
+  // OBJECTIVES_AFTER_FOG: los Bastiones son conocimiento estratégico público.
+  ctx.save(); ctx.translate(-cam.x,-cam.y);
+  for(const objective of (S.objectives||[])) drawObjective(objective);
+  ctx.restore();
+
   drawFlowFieldDebug();
 
   // caja de selección
@@ -1516,6 +1632,30 @@ function h2(x,y){
   let n = (x|0)*374761393 + (y|0)*668265263;
   n = (n ^ (n>>13)) * 1274126177;
   return ((n ^ (n>>16)) >>> 0) / 4294967296;
+}
+
+function drawObjective(objective){
+  const ownerColor=objective.owner?COLOR[objective.owner].main:'#d8c98d';
+  const controlColor=objective.control>=0?COLOR.red.main:COLOR.blue.main;
+  const capture=Math.abs(objective.control)/100;
+  ctx.save();
+  ctx.globalAlpha=.92;
+  ctx.fillStyle='rgba(8,12,10,.72)'; circle(objective.x,objective.y,OBJECTIVE_RADIUS*.68);
+  ctx.strokeStyle=ownerColor; ctx.lineWidth=4;
+  ctx.beginPath(); ctx.arc(objective.x,objective.y,OBJECTIVE_RADIUS*.72,0,Math.PI*2); ctx.stroke();
+  if(capture>0.01){
+    ctx.strokeStyle=controlColor; ctx.lineWidth=7;
+    ctx.beginPath(); ctx.arc(objective.x,objective.y,OBJECTIVE_RADIUS*.84,-Math.PI/2,-Math.PI/2+Math.PI*2*capture); ctx.stroke();
+  }
+  ctx.fillStyle=ownerColor;
+  ctx.beginPath();
+  ctx.moveTo(objective.x,objective.y-24); ctx.lineTo(objective.x+22,objective.y);
+  ctx.lineTo(objective.x,objective.y+24); ctx.lineTo(objective.x-22,objective.y); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#07100b'; ctx.font='bold 18px VT323, monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(objective.owner?FACTIONS[objective.owner].short:'⚑',objective.x,objective.y+1);
+  ctx.fillStyle='#ffe9a8'; ctx.font='15px VT323, monospace';
+  ctx.fillText(objective.name,objective.x,objective.y+OBJECTIVE_RADIUS*.98);
+  ctx.restore();
 }
 
 const GRASS = ['#3f5d2a','#446328','#3a5526','#4a6b2e','#41602b'];
@@ -1716,6 +1856,10 @@ function drawUnit(e,d,selected){
   }
   // aura de héroe
   if(hero){
+    if(e.side==='red'){
+      ctx.strokeStyle='rgba(255,80,60,0.18)'; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.arc(x,y,FACTIONS.red.kingAuraRange,0,Math.PI*2); ctx.stroke();
+    }
     const glow=e.buffT>0?0.9:0.45;
     ctx.strokeStyle=`rgba(255,209,74,${glow})`; ctx.lineWidth=e.buffT>0?4:2.5;
     ctx.beginPath(); ctx.ellipse(x, y+r*0.85, r+5, r*0.6, 0,0,Math.PI*2); ctx.stroke();
@@ -1839,6 +1983,7 @@ function drawMinimap(S){
   const sx=mw/MAP_W, sy=mh/MAP_H;
   ctx.fillStyle='#3a5526'; ctx.fillRect(x0,y0,mw,mh);
   for(const n of S.nodes){ ctx.fillStyle=n.type==='gold'?'#caa12e':'#3f8a43'; ctx.fillRect(x0+n.x*sx-1,y0+n.y*sy-1,2,2); }
+  for(const objective of (S.objectives||[])){ ctx.fillStyle=objective.owner?COLOR[objective.owner].main:'#ffe9a8'; ctx.fillRect(x0+objective.x*sx-2,y0+objective.y*sy-2,4,4); }
   for(const e of S.ents){ ctx.fillStyle=COLOR[e.side].main; const s=e.building?3:2; ctx.fillRect(x0+e.x*sx-s/2,y0+e.y*sy-s/2,s,s); }
   // viewport
   ctx.strokeStyle='#fff'; ctx.lineWidth=1;
@@ -2242,6 +2387,11 @@ function updateHUD(){
   setText('gold', Math.floor(r.g));
   setText('wood', Math.floor(r.w));
   setText('pop', r.pop+'/'+r.cap);
+  setText('factionInfo', FACTIONS[mySide].name);
+  const owned=objectiveCount(S,mySide), enemyOwned=objectiveCount(S,enemySide);
+  const dominance=Math.floor(S.dominance?.[mySide]||0);
+  const remaining=Math.max(0,Math.ceil(DOMINANCE_SECONDS-dominance));
+  setText('objectiveInfo', `BASTIONES ${owned}/3 · RIVAL ${enemyOwned}/3 · ${owned>=2?'SUPREMACÍA '+remaining+'s':'SUPREMACÍA INACTIVA'}`);
   const ageName=AGE_DEFS[r.age||1].name;
   const researchText=r.research?` · ⚙ ${RESEARCH[r.research.id].name} ${Math.max(0,Math.ceil(r.research.t))}s`:'';
   setText('ageInfo', ageName+researchText);
@@ -2263,7 +2413,7 @@ function refreshPanel(){
   const counts={};
   for(const id of ids){ const e=entById2(S,id); if(!e) continue; counts[e.kind]=(counts[e.kind]||0)+1; }
   document.getElementById('selInfo').textContent =
-    Object.entries(counts).map(([k,v])=> k==='king' ? `👑 Rey ${COLOR[mySide].name}` : `${v}× ${DEFS[k].name}`).join('  ·  ');
+    Object.entries(counts).map(([k,v])=> k==='king' ? `👑 Rey ${COLOR[mySide].name} · ${FACTIONS[mySide].name}` : `${v}× ${DEFS[k].name}`).join('  ·  ');
 
   // un solo edificio de producción
   if(ids.length===1){
@@ -2349,6 +2499,8 @@ function serialize(){
     tick:G.tick, time:Math.round(G.time), winner:G.winner,
     res:{ red:{...G.res.red}, blue:{...G.res.blue} },
     nodes: G.nodes.map(n=>({id:n.id,type:n.type,x:Math.round(n.x),y:Math.round(n.y),amount:Math.round(n.amount),r:n.r})),
+    objectives: G.objectives.map((objective)=>({...objective, control:Math.round(objective.control)})),
+    dominance:{...G.dominance}, victoryReason:G.victoryReason,
     ents: G.ents.map(e=>({
       id:e.id, side:e.side, kind:e.kind,
       x:Math.round(e.x), y:Math.round(e.y),
@@ -2376,6 +2528,7 @@ function startGame(opts){
   if(mode==='client'){
     // el cliente no simula; espera snapshots
     G=null;
+    TERRAIN.init(); FOG.init();
     Net.onSnap=onSnapshot;
   } else {
     initMap();
@@ -2410,9 +2563,11 @@ function showEnd(winner){
   SFX.play(won?'victory':'defeat');
   document.getElementById('endTitle').textContent = won?'¡VICTORIA!':'DERROTA';
   document.getElementById('endTitle').style.color = won?'#7CFC00':'#ff5555';
-  document.getElementById('endSub').textContent = won
-    ? `El reino de ${COLOR[mySide].name} domina el mapa.`
-    : `El reino de ${COLOR[winner].name} arrasó tu castillo.`;
+  const state=renderState();
+  const reason=state?.victoryReason || 'castle';
+  document.getElementById('endSub').textContent = reason==='supremacy'
+    ? (won?`La ${FACTIONS[mySide].name} sostuvo dos Bastiones y proclamó supremacía.`:`${COLOR[winner].name} dominó los Bastiones antes de que pudieras recuperarlos.`)
+    : (won?`El reino de ${COLOR[mySide].name} derribó el castillo enemigo.`:`El reino de ${COLOR[winner].name} arrasó tu castillo.`);
   document.getElementById('endScreen').style.display='flex';
 }
 
@@ -2425,7 +2580,11 @@ window.REINOS = {
 
   getMatchMeta(){
     const S=renderState();
-    return {mode, side:mySide, difficulty:mode==='sp'?aiDifficulty:'human', age:S?.res?.[mySide]?.age||1};
+    return {
+      mode, side:mySide, difficulty:mode==='sp'?aiDifficulty:'human', age:S?.res?.[mySide]?.age||1,
+      faction:FACTIONS[mySide].name, victoryReason:S?.victoryReason||'castle',
+      objectives:objectiveCount(S,mySide), dominance:Math.floor(S?.dominance?.[mySide]||0),
+    };
   },
 
   hostGame(){

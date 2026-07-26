@@ -36,13 +36,13 @@
         </select>
       </div>
       <div class="row">
-        <button class="btn red" onclick="REINOS.startSolo('red', document.getElementById('difficultySelect').value)">JUGAR COMO LEÓN<small>vs CPU azul</small></button>
-        <button class="btn blue" onclick="REINOS.startSolo('blue', document.getElementById('difficultySelect').value)">JUGAR COMO NELSON<small>vs CPU roja</small></button>
+        <button class="btn red" onclick="REINOS.startSolo('red', document.getElementById('difficultySelect').value)">JUGAR COMO LEÓN<small>Legión del Rugido · melee + aura real</small></button>
+        <button class="btn blue" onclick="REINOS.startSolo('blue', document.getElementById('difficultySelect').value)">JUGAR COMO NELSON<small>Orden del Horizonte · alcance + economía</small></button>
       </div>
       <div class="divider">— · · · —</div>
       <h2>DUELO ONLINE</h2>
       <div class="row">
-        <button class="btn" onclick="REINOS.hostGame()">CREAR SALA<small>tú eres LEÓN</small></button>
+        <button class="btn" onclick="REINOS.hostGame()">CREAR SALA<small>LEÓN · Legión del Rugido</small></button>
       </div>
       <div id="hostWait" aria-live="polite">
         Código de sala: <span id="roomCode">— — —</span><br>
@@ -53,7 +53,7 @@
       <div class="row join-row">
         <label class="sr-only" for="joinInput">Código de sala</label>
         <input class="code" id="joinInput" placeholder="REINO-ABC234" maxlength="12" autocomplete="off" spellcheck="false">
-        <button class="btn blue" onclick="REINOS.joinGame(document.getElementById('joinInput').value)">UNIRME<small>serás NELSON</small></button>
+        <button class="btn blue" onclick="REINOS.joinGame(document.getElementById('joinInput').value)">UNIRME<small>NELSON · Orden del Horizonte</small></button>
       </div>
       <div id="netStatus2" aria-live="polite"></div>
       <div class="menu-tools">
@@ -61,15 +61,17 @@
         <button id="installBtn" class="mini-btn" type="button" hidden>INSTALAR JUEGO</button>
         <button id="openChronicleBtn" class="mini-btn" type="button">CRÓNICA DE GUERRA</button>
       </div>
-      <div class="hint">Junta 🪙 oro y 🪵 madera, construye tu base, forma un ejército y derriba el castillo enemigo.</div>
+      <div class="hint">Derriba el castillo enemigo o controla dos de los tres Bastiones durante 75 segundos para proclamar supremacía.</div>
     </div>
   </div>
   <div id="hud">
     <div class="stat" id="p1name">LEÓN</div>
+    <div class="stat faction" id="factionInfo">LEGIÓN DEL RUGIDO</div>
     <div class="stat age" id="ageInfo">EDAD DE ALDEA</div>
     <div class="stat gold">🪙 <span id="gold">0</span></div>
     <div class="stat wood">🪵 <span id="wood">0</span></div>
     <div class="stat pop">👥 <span id="pop">0/10</span></div>
+    <div class="stat objectives" id="objectiveInfo">BASTIONES 0/3</div>
     <div class="stat" id="enemyInfo"></div>
   </div>
   <div id="matchTools" hidden>
@@ -78,7 +80,7 @@
     <button id="fullscreenHud" class="hud-btn" type="button" aria-label="Pantalla completa">⛶</button>
   </div>
   <div id="panel"><div id="selInfo">— sin selección —</div><div id="cmds"></div></div>
-  <div class="controls">WASD / flechas / bordes: mover cámara<br>Click izq: seleccionar · arrastrar: caja<br>Click der: mover / atacar / recolectar<br>Aldeano → Q casa · E cuartel · R torre<br>Castillo y cuartel → edades y tecnologías<br>F flow field · G niebla de guerra</div>
+  <div class="controls">WASD / flechas / bordes: mover cámara<br>Click izq: seleccionar · arrastrar: caja<br>Click der: mover / atacar / recolectar<br>Aldeano → Q casa · E cuartel · R torre<br>Castillo y cuartel → edades y tecnologías<br>Bastiones → controla 2 durante 75s<br>F flow field · G niebla de guerra</div>
   <div id="endScreen">
     <div id="endTitle">FIN</div>
     <div id="endSub"></div>

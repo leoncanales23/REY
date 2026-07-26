@@ -55,3 +55,10 @@ Desbloqueos principales:
 - Edad de Aldea: aldeanos y espadachines.
 - Edad de Fortaleza: arqueros, torres, mampostería, filos forjados y emplumado.
 - Edad Imperial: caballeros, cría de guerra y población máxima ampliada.
+
+
+## Reinos Asimétricos
+
+León y Nelson ya no son variaciones cosméticas. La **Legión del Rugido** obtiene presión cuerpo a cuerpo, mayor poder de captura y un aura ofensiva alrededor del Rey León. La **Orden del Horizonte** obtiene más alcance para arqueros y torres, visión ampliada y aldeanos más eficientes.
+
+El mapa incorpora tres Bastiones neutrales. Las unidades militares capturan presencia dentro de su radio; cada Bastión controlado entrega un ingreso moderado y dominar dos activa una cuenta regresiva de 75 segundos. La partida termina por destrucción del castillo o por supremacía territorial. La IA reconoce los objetivos y los prioriza antes del asalto final.
