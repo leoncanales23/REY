@@ -1,6 +1,6 @@
-const CACHE_NAME = 'reinos-next-v1';
+const CACHE_NAME = 'reinos-next-v2';
 const APP_SHELL = [
-  './', './index.html', './style.css', './net.js', './game.js', './app.js',
+  './', './index.html', './style.css', './chronicle.css', './net.js', './game.js', './app.js', './chronicle.js',
   './manifest.webmanifest', './icons/reinos-192.png', './icons/reinos-512.png',
 ];
 self.addEventListener('install', (event) => {

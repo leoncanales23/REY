@@ -11,6 +11,7 @@
 <link rel="icon" href="icons/reinos-192.png" sizes="192x192">
 <link rel="apple-touch-icon" href="icons/reinos-192.png">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="chronicle.css">
 </head>
 <body class="crt">
   <canvas id="game" aria-label="Campo de batalla de REINOS"></canvas>
@@ -50,6 +51,7 @@
       <div class="menu-tools">
         <button id="fullscreenBtn" class="mini-btn" type="button">PANTALLA COMPLETA</button>
         <button id="installBtn" class="mini-btn" type="button" hidden>INSTALAR JUEGO</button>
+        <button id="openChronicleBtn" class="mini-btn" type="button">CRÓNICA DE GUERRA</button>
       </div>
       <div class="hint">Junta 🪙 oro y 🪵 madera, construye tu base, forma un ejército y derriba el castillo enemigo.</div>
     </div>
@@ -68,11 +70,35 @@
   </div>
   <div id="panel"><div id="selInfo">— sin selección —</div><div id="cmds"></div></div>
   <div class="controls">WASD / flechas / bordes: mover cámara<br>Click izq: seleccionar · arrastrar: caja<br>Click der: mover / atacar / recolectar<br>Aldeano → Q casa · E cuartel · R torre<br>F flow field · G niebla de guerra</div>
-  <div id="endScreen"><div id="endTitle">FIN</div><div id="endSub"></div><button class="btn" style="max-width:240px;" onclick="REINOS.restart()">VOLVER AL MENÚ</button></div>
+  <div id="endScreen">
+    <div id="endTitle">FIN</div>
+    <div id="endSub"></div>
+    <div id="battleSummary" aria-live="polite"></div>
+    <button class="btn" style="max-width:240px;" onclick="REINOS.restart()">VOLVER AL MENÚ</button>
+  </div>
+
+  <dialog id="chronicleDialog" class="chronicle-dialog" aria-labelledby="chronicleTitle">
+    <div class="chronicle-shell">
+      <div class="chronicle-header">
+        <div>
+          <span class="chronicle-kicker">ARCHIVO DEL REINO</span>
+          <h2 id="chronicleTitle">CRÓNICA DE GUERRA</h2>
+        </div>
+        <button id="closeChronicleBtn" class="hud-btn" type="button" aria-label="Cerrar crónica">✕</button>
+      </div>
+      <div id="chronicleStats" class="chronicle-stats"></div>
+      <div id="chronicleList" class="chronicle-list"></div>
+      <div class="chronicle-actions">
+        <button id="clearChronicleBtn" class="mini-btn danger" type="button">BORRAR CRÓNICA</button>
+      </div>
+    </div>
+  </dialog>
+
   <noscript>REINOS necesita JavaScript para ejecutar la simulación.</noscript>
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" crossorigin="anonymous"></script>
   <script src="net.js"></script>
   <script src="game.js"></script>
   <script src="app.js"></script>
+  <script src="chronicle.js"></script>
 </body>
 </html>
