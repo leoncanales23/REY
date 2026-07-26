@@ -18,27 +18,55 @@
     setTimeout(() => el.remove(), 2300);
   }
 
+  function normalizeRoomCode(value) {
+    const code = Net.normalizeCode(value);
+    return Net.isValidCode(code) ? code : null;
+  }
+
+  function roomCodeFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    return normalizeRoomCode(params.get('room') || params.get('sala'));
+  }
+
   function currentRoomCode() {
-    const text = roomCode ? roomCode.textContent : '';
-    return Net.isValidCode(text) ? Net.normalizeCode(text) : null;
+    const candidates = [
+      Net.code,
+      roomCode ? roomCode.textContent : '',
+      roomCodeFromUrl(),
+      roomInput ? roomInput.value : '',
+    ];
+    for (const candidate of candidates) {
+      const code = normalizeRoomCode(candidate);
+      if (code) return code;
+    }
+    return null;
+  }
+
+  function syncRoomUi(code) {
+    if (!code) return;
+    if (roomCode) roomCode.textContent = code;
+    if (roomInput && !roomInput.value) roomInput.value = code;
   }
 
   function roomUrl(code) {
     const url = new URL(window.location.href);
     url.searchParams.set('room', code);
+    url.searchParams.delete('sala');
     url.hash = '';
     return url.toString();
   }
 
   function rememberRoom(code) {
     if (!code) return;
+    syncRoomUi(code);
     const url = new URL(window.location.href);
     url.searchParams.set('room', code);
+    url.searchParams.delete('sala');
     window.history.replaceState({}, '', url);
   }
 
   async function shareRoom() {
-    const code = currentRoomCode() || (roomInput && Net.isValidCode(roomInput.value) ? Net.normalizeCode(roomInput.value) : null);
+    const code = currentRoomCode();
     if (!code) {
       toast('Crea una sala primero');
       return;
@@ -84,22 +112,27 @@
     connectionBadge.dataset.state = connected ? 'connected' : 'waiting';
   }
 
+  function showMatchShell() {
+    const hud = byId('hud');
+    const matchTools = byId('matchTools');
+    if (hud) hud.style.display = 'flex';
+    if (matchTools) matchTools.hidden = false;
+  }
+
   function enhanceGameApi() {
     if (!window.REINOS) return;
 
     const originalSolo = REINOS.startSolo.bind(REINOS);
     REINOS.startSolo = (side) => {
       originalSolo(side);
-      byId('hud').style.display = 'flex';
-      byId('matchTools').hidden = false;
+      showMatchShell();
       setConnectionState('SOLO', true);
     };
 
     const originalHost = REINOS.hostGame.bind(REINOS);
     REINOS.hostGame = () => {
       originalHost();
-      byId('hud').style.display = 'flex';
-      byId('matchTools').hidden = false;
+      showMatchShell();
       const code = currentRoomCode();
       rememberRoom(code);
       setConnectionState('ESPERANDO RIVAL', false);
@@ -108,16 +141,15 @@
 
     const originalJoin = REINOS.joinGame.bind(REINOS);
     REINOS.joinGame = (value) => {
-      const code = Net.normalizeCode(value);
-      if (!Net.isValidCode(code)) {
+      const code = normalizeRoomCode(value);
+      if (!code) {
         const status = byId('netStatus2');
         if (status) status.textContent = 'Código inválido. Usa REINO-XXXXXX.';
         return;
       }
       rememberRoom(code);
       originalJoin(code);
-      byId('hud').style.display = 'flex';
-      byId('matchTools').hidden = false;
+      showMatchShell();
       setConnectionState('CONECTANDO', false);
     };
   }
@@ -133,13 +165,12 @@
   }
 
   function hydrateRoomFromUrl() {
-    const params = new URLSearchParams(window.location.search);
-    const code = Net.normalizeCode(params.get('room'));
-    if (roomInput && Net.isValidCode(code)) {
-      roomInput.value = code;
-      const status = byId('netStatus2');
-      if (status) status.textContent = `Invitación detectada: ${code}`;
-    }
+    const code = roomCodeFromUrl();
+    if (!code) return;
+    syncRoomUi(code);
+    rememberRoom(code);
+    const status = byId('netStatus2');
+    if (status) status.textContent = `Invitación detectada: ${code}`;
   }
 
   function setupInstall() {
