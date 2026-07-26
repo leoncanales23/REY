@@ -78,7 +78,7 @@ for (const asset of ['./chronicle.css', './chronicle.js']) {
   if (!serviceWorker.includes(asset)) throw new Error(`El service worker no cachea ${asset}`);
 }
 
-for (const marker of ['const AGE_DEFS =', 'const RESEARCH =', "case 'research'", 'stepResearch(dt)', 'getMatchMeta()']) {
+for (const marker of ['const AGE_DEFS =', 'const RESEARCH =', "case 'research'", 'stepResearch(dt)', 'getMatchMeta()', 'AI_AGE_RESERVE', 'activeState()', 'savingForAge']) {
   if (!game.includes(marker)) throw new Error(`Era de Conquista incompleta en game.js: falta ${marker}`);
 }
 for (const marker of ['allowedResearch', "case 'research'"]) {

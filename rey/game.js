@@ -103,7 +103,12 @@ function freshState() {
 
 function nid() { return G.nextId++; }
 
-function sideState(side){ return G && G.res ? G.res[side] : null; }
+function activeState(){
+  if(G) return G;
+  if(typeof renderState==='function') return renderState();
+  return null;
+}
+function sideState(side){ const state=activeState(); return state && state.res ? state.res[side] : null; }
 function aiProfile(){ return AI_PROFILES[aiDifficulty] || AI_PROFILES.warrior; }
 function isAiSide(side){ return mode==='sp' && side===enemySide; }
 function hasTech(side,id){ const r=sideState(side); return !!(r && r.techs && r.techs[id]); }
@@ -318,8 +323,8 @@ function nearestEnemy(side, x, y, maxR){
 
 // ---------- Comandos (autoridad: host/sp) ----------
 function canAfford(side, key, pop=0){
-  const r=G.res[side], c=COST[key];
-  if(!c) return false;
+  const r=sideState(side), c=COST[key];
+  if(!r||!c) return false;
   if(r.g < (c.g||0)) return false;
   if(r.w < (c.w||0)) return false;
   if(pop && r.pop + (c.pop||0) > r.cap) return false;
@@ -399,9 +404,10 @@ function applyCommand(cmd, side){
 }
 
 function validPlacement(x,y,r){
-  if(x<r||y<r||x>MAP_W-r||y>MAP_H-r) return false;
-  for(const e of G.ents){ if(e.building && dist(x,y,e.x,e.y) < r+DEFS[e.kind].r+6) return false; }
-  for(const n of G.nodes){ if(dist(x,y,n.x,n.y) < r+n.r+6) return false; }
+  const state=activeState();
+  if(!state||x<r||y<r||x>MAP_W-r||y>MAP_H-r) return false;
+  for(const e of state.ents){ if(e.building && dist(x,y,e.x,e.y) < r+DEFS[e.kind].r+6) return false; }
+  for(const n of state.nodes){ if(dist(x,y,n.x,n.y) < r+n.r+6) return false; }
   return true;
 }
 
@@ -1259,17 +1265,25 @@ function separate(){
 // ---------- IA (enemigo en single player) ----------
 const AI = { t:0, lastBuild:0 };
 function aiTryResearch(side,castle,barracks,profile){
-  const r=sideState(side); if(!r || r.research) return;
-  if(r.age===1 && G.time>=profile.age2At){ startResearch(side,'age2',castle); return; }
-  if(r.age===2 && G.time>=profile.age3At){ startResearch(side,'age3',castle); return; }
+  const r=sideState(side); if(!r) return null;
+  if(r.research) return 'active';
+  // AI_AGE_RESERVE: al llegar el momento de avanzar, conserva recursos hasta pagarlo.
+  if(r.age===1 && G.time>=profile.age2At){
+    return startResearch(side,'age2',castle)?'active':'save-age';
+  }
+  if(r.age===2 && G.time>=profile.age3At){
+    return startResearch(side,'age3',castle)?'active':'save-age';
+  }
+  if(r.age===1 && barracks.length===0) return null;
   const priorities=r.age>=3
     ? ['cavalry','forgedBlades','fletching','masonry','wheelbarrow']
     : r.age>=2 ? ['forgedBlades','fletching','masonry','wheelbarrow'] : ['wheelbarrow'];
   for(const id of priorities){
     const def=RESEARCH[id];
     const building=def.from==='castle'?castle:barracks[0];
-    if(building && startResearch(side,id,building)) return;
+    if(building && startResearch(side,id,building)) return 'active';
   }
+  return null;
 }
 function aiStep(dt){
   AI.t += dt;
@@ -1291,29 +1305,33 @@ function aiStep(dt){
     if(n){ v.order={type:'gather'}; v.nodeId=n.id; v.carryType=n.type; v.moving=true; }
   }
 
-  if(vills.length<profile.villagers && castle.queue.length<profile.queueDepth && canAfford(side,'villager',1)){
+  const researchPlan=aiTryResearch(side,castle,barracks,profile);
+  const savingForAge=researchPlan==='save-age';
+
+  if(!savingForAge && vills.length<profile.villagers && castle.queue.length<profile.queueDepth && canAfford(side,'villager',1)){
     applyCommand({type:'train', buildingId:castle.id, unit:'villager'}, side);
   }
-  if(r.pop >= r.cap-2 && r.cap<(r.age>=3?80:60) && canAfford(side,'house') && AI.t-AI.lastBuild>2.5){
+  if(!savingForAge && r.pop >= r.cap-2 && r.cap<(r.age>=3?80:60) && canAfford(side,'house') && AI.t-AI.lastBuild>2.5){
     aiBuild(side, castle, 'house'); AI.lastBuild=AI.t;
   }
-  if(barracks.length===0 && r.w>=150 && vills.length>=5 && AI.t-AI.lastBuild>3){
+  if(!savingForAge && barracks.length===0 && r.w>=150 && vills.length>=5 && AI.t-AI.lastBuild>3){
     aiBuild(side, castle, 'barracks'); AI.lastBuild=AI.t;
   }
-  if(r.age>=2 && towers.length<profile.towers && barracks.length>0 && canAfford(side,'tower') && AI.t-AI.lastBuild>5){
+  if(!savingForAge && r.age>=2 && towers.length<profile.towers && barracks.length>0 && canAfford(side,'tower') && AI.t-AI.lastBuild>5){
     aiBuild(side, castle, 'tower'); AI.lastBuild=AI.t;
   }
 
-  aiTryResearch(side,castle,barracks,profile);
 
-  const available=['swordsman'];
-  if(r.age>=2) available.push('archer');
-  if(r.age>=3) available.push('knight');
-  for(const b of barracks){
-    while(b.queue.length<profile.queueDepth){
-      const unit=available[Math.floor(Math.random()*available.length)];
-      if(!canAfford(side,unit,1)) break;
-      applyCommand({type:'train', buildingId:b.id, unit}, side);
+  if(!savingForAge){
+    const available=['swordsman'];
+    if(r.age>=2) available.push('archer');
+    if(r.age>=3) available.push('knight');
+    for(const b of barracks){
+      while(b.queue.length<profile.queueDepth){
+        const unit=available[Math.floor(Math.random()*available.length)];
+        if(!canAfford(side,unit,1)) break;
+        applyCommand({type:'train', buildingId:b.id, unit}, side);
+      }
     }
   }
 
@@ -1459,7 +1477,7 @@ function render(){
 
   // fantasma de construcción
   if(buildKind && mouse.wx!=null){
-    const ok=validPlacement(mouse.wx,mouse.wy,DEFS[buildKind].r) && canAfford(mySide,buildKind);
+    const ok=canBuildKind(mySide,buildKind) && validPlacement(mouse.wx,mouse.wy,DEFS[buildKind].r) && canAfford(mySide,buildKind);
     ctx.globalAlpha=0.5;
     ctx.fillStyle= ok?COLOR[mySide].main:'#888';
     circle(mouse.wx,mouse.wy,DEFS[buildKind].r);
@@ -2201,7 +2219,14 @@ function selHasVillager(){
   return false;
 }
 
-function setBuild(kind){ buildKind=kind; }
+function setBuild(kind){
+  const required=BUILDING_AGE[kind]||1;
+  if(!canBuildKind(mySide,kind)){
+    toast('🔒 Requiere '+AGE_DEFS[required].name);
+    return;
+  }
+  buildKind=kind;
+}
 function placeBuilding(){
   if(!buildKind) return;
   const vIds=[...sel].filter(id=>{const e=entById2(renderState(),id); return e&&e.kind==='villager';});
@@ -2307,7 +2332,10 @@ function addCancelBtn(panel,e){
   panel.appendChild(b);
 }
 function addBuildBtn(panel,kind,label,sub){
-  const b=btn(label,sub);
+  const required=BUILDING_AGE[kind]||1;
+  const locked=!canBuildKind(mySide,kind);
+  const b=btn(locked?'🔒 '+label:label,locked?'requiere '+AGE_DEFS[required].name:sub);
+  b.disabled=locked;
   b.onclick=()=>setBuild(kind);
   panel.appendChild(b);
 }
