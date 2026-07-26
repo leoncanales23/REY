@@ -20,6 +20,8 @@ jobs:
           node-version: 22
       - name: Apply asymmetric kingdoms
         run: python3 scripts/apply-reinos-asimetricos.py
+      - name: Apply strategic hardening
+        run: python3 scripts/finalize-reinos-asimetricos.py
       - name: Validate generated game
         run: |
           node --check rey/game.js
@@ -31,11 +33,11 @@ jobs:
       - name: Commit generated source
         run: |
           if git diff --quiet; then
-            echo "Reinos Asimétricos already applied"
+            echo "Reinos Asimétricos already hardened"
             exit 0
           fi
           git config user.name "reinos-asymmetry-bot"
           git config user.email "actions@users.noreply.github.com"
           git add rey README.md scripts/validate.mjs
-          git commit -m "feat: add asymmetric kingdoms and neutral Bastions [asym-generated]"
+          git commit -m "fix: hold Bastions and expose strategic objectives [asym-final]"
           git push origin HEAD:${{ github.head_ref }}
