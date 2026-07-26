@@ -4,9 +4,11 @@ import { constants } from 'node:fs';
 const required = [
   'rey/index.html',
   'rey/style.css',
+  'rey/chronicle.css',
   'rey/net.js',
   'rey/game.js',
   'rey/app.js',
+  'rey/chronicle.js',
   'rey/sw.js',
   'rey/manifest.webmanifest',
   'rey/icons/reinos-192.png',
@@ -21,8 +23,10 @@ const html = await readFile('rey/index.html', 'utf8');
 const app = await readFile('rey/app.js', 'utf8');
 const game = await readFile('rey/game.js', 'utf8');
 const net = await readFile('rey/net.js', 'utf8');
+const chronicle = await readFile('rey/chronicle.js', 'utf8');
+const serviceWorker = await readFile('rey/sw.js', 'utf8');
 
-for (const ref of ['style.css', 'net.js', 'game.js', 'app.js', 'manifest.webmanifest']) {
+for (const ref of ['style.css', 'chronicle.css', 'net.js', 'game.js', 'app.js', 'chronicle.js', 'manifest.webmanifest']) {
   if (!html.includes(ref)) throw new Error(`index.html no referencia ${ref}`);
 }
 
@@ -59,4 +63,19 @@ for (const id of ['joinInput', 'roomCode', 'netStatus2', 'copyInviteMenu', 'copy
   if (!html.includes(`id="${id}"`)) throw new Error(`Falta el elemento crítico #${id}`);
 }
 
-console.log('Validación estática y contrato de salas de REINOS completados.');
+const chronicleDomIds = [...chronicle.matchAll(/byId\(['"]([^'"]+)['"]\)/g)].map((match) => match[1]);
+for (const id of new Set(chronicleDomIds)) {
+  if (!html.includes(`id="${id}"`) && !html.includes(`id='${id}'`)) {
+    throw new Error(`chronicle.js espera #${id}, pero index.html no lo declara`);
+  }
+}
+
+for (const marker of ['localStorage', 'sessionStorage', 'MutationObserver', 'finishBattle', 'renderBattleSummary']) {
+  if (!chronicle.includes(marker)) throw new Error(`Crónica de Guerra incompleta: falta ${marker}`);
+}
+
+for (const asset of ['./chronicle.css', './chronicle.js']) {
+  if (!serviceWorker.includes(asset)) throw new Error(`El service worker no cachea ${asset}`);
+}
+
+console.log('Validación estática, contrato de salas y Crónica de Guerra completados.');
