@@ -45,3 +45,13 @@ Requiere Firebase CLI autenticado:
 ## Seguridad y límites conocidos
 
 El host controla la simulación, lo que reduce trampas del cliente pero no convierte la partida en un sistema competitivo verificable. Un modo clasificado necesitará servidor autoritativo, identidad, persistencia y protección anti-replay. PeerJS usa señalización pública, por lo que la disponibilidad del duelo online depende de un servicio externo.
+
+## Era de Conquista
+
+La progresión estratégica incluye tres edades, desbloqueos por época y tecnologías investigables desde castillo o cuartel. La IA ofrece perfiles Explorador, Guerrero y Conquistador que modifican economía, velocidad de decisión, composición, investigación y presión ofensiva. El multijugador mantiene al host como autoridad y valida también los comandos de investigación.
+
+Desbloqueos principales:
+
+- Edad de Aldea: aldeanos y espadachines.
+- Edad de Fortaleza: arqueros, torres, mampostería, filos forjados y emplumado.
+- Edad Imperial: caballeros, cría de guerra y población máxima ampliada.

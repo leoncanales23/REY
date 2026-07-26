@@ -39,6 +39,43 @@ const COST = {
   tower:    {g:50, w:50,  build:true},
 };
 
+const AGE_DEFS = {
+  1: { name:'EDAD DE ALDEA' },
+  2: { name:'EDAD DE FORTALEZA' },
+  3: { name:'EDAD IMPERIAL' },
+};
+
+const UNIT_AGE = { villager:1, swordsman:1, archer:2, knight:3 };
+const BUILDING_AGE = { house:1, barracks:1, tower:2 };
+
+const RESEARCH = {
+  age2: { name:'Avanzar a Fortaleza', age:1, toAge:2, g:350, w:250, t:35, from:'castle' },
+  age3: { name:'Avanzar a Imperial', age:2, toAge:3, g:650, w:450, t:50, from:'castle' },
+  wheelbarrow: { name:'Carretilla', age:1, g:180, w:120, t:25, from:'castle', note:'+25% recolección y carga' },
+  masonry: { name:'Mampostería', age:2, g:260, w:260, t:35, from:'castle', note:'+22% vida de edificios' },
+  forgedBlades: { name:'Filos Forjados', age:2, g:240, w:160, t:30, from:'barracks', note:'+15% daño cuerpo a cuerpo' },
+  fletching: { name:'Emplumado', age:2, g:220, w:220, t:30, from:'barracks', note:'+12% daño y +20 alcance' },
+  cavalry: { name:'Cría de Guerra', age:3, g:360, w:260, t:40, from:'barracks', note:'+18% velocidad y +15% vida de caballeros' },
+};
+
+const AI_PROFILES = {
+  explorer: {
+    label:'EXPLORADOR', decisionTicks:36, villagers:8, towers:1, queueDepth:1,
+    attackBase:7, attackGrowth:120, gather:0.9, combat:0.9, startBonus:0,
+    age2At:125, age3At:310,
+  },
+  warrior: {
+    label:'GUERRERO', decisionTicks:20, villagers:10, towers:2, queueDepth:2,
+    attackBase:5, attackGrowth:90, gather:1, combat:1, startBonus:80,
+    age2At:85, age3At:235,
+  },
+  conqueror: {
+    label:'CONQUISTADOR', decisionTicks:12, villagers:13, towers:3, queueDepth:3,
+    attackBase:4, attackGrowth:70, gather:1.22, combat:1.12, startBonus:220,
+    age2At:55, age3At:165,
+  },
+};
+
 const COLOR = {
   red:  {main:'#ff3b3b', dark:'#7a1414', light:'#ff8a8a', name:'LEÓN'},
   blue: {main:'#3b8bff', dark:'#143a7a', light:'#8ac0ff', name:'NELSON'},
@@ -50,13 +87,14 @@ let mySide = 'red';
 let enemySide = 'blue';
 let mode = 'sp';       // 'sp' | 'host' | 'client'
 let running = false;
+let aiDifficulty = 'warrior';
 
 function freshState() {
   return {
     tick: 0, time: 0, nextId: 1, winner: null,
     res: {
-      red:  {g:200, w:200, pop:0, cap:10},
-      blue: {g:200, w:200, pop:0, cap:10},
+      red:  {g:200, w:200, pop:0, cap:10, age:1, techs:{}, research:null},
+      blue: {g:200, w:200, pop:0, cap:10, age:1, techs:{}, research:null},
     },
     ents: [], nodes: [], projectiles: [],
     particles: [],   // sistema de partículas
@@ -65,12 +103,99 @@ function freshState() {
 
 function nid() { return G.nextId++; }
 
+function activeState(){
+  if(G) return G;
+  if(typeof renderState==='function') return renderState();
+  return null;
+}
+function sideState(side){ const state=activeState(); return state && state.res ? state.res[side] : null; }
+function aiProfile(){ return AI_PROFILES[aiDifficulty] || AI_PROFILES.warrior; }
+function isAiSide(side){ return mode==='sp' && side===enemySide; }
+function hasTech(side,id){ const r=sideState(side); return !!(r && r.techs && r.techs[id]); }
+function ageOf(side){ const r=sideState(side); return r && r.age ? r.age : 1; }
+function canTrainUnit(side,unit){ return ageOf(side) >= (UNIT_AGE[unit] || 1); }
+function canBuildKind(side,kind){ return ageOf(side) >= (BUILDING_AGE[kind] || 1); }
+
+function maxHpFor(side,kind){
+  let value=DEFS[kind].hp;
+  if(DEFS[kind].building && hasTech(side,'masonry')) value*=1.22;
+  if(kind==='knight' && hasTech(side,'cavalry')) value*=1.15;
+  return Math.round(value);
+}
+function attackFor(e){
+  let value=DEFS[e.kind].atk || 0;
+  if(hasTech(e.side,'forgedBlades') && ['swordsman','knight','king'].includes(e.kind)) value*=1.15;
+  if(hasTech(e.side,'fletching') && ['archer','tower'].includes(e.kind)) value*=1.12;
+  if(isAiSide(e.side)) value*=aiProfile().combat;
+  return value;
+}
+function rangeFor(e){
+  let value=DEFS[e.kind].range || 0;
+  if(hasTech(e.side,'fletching') && ['archer','tower'].includes(e.kind)) value+=20;
+  return value;
+}
+function speedFor(e){
+  let value=DEFS[e.kind].speed || 0;
+  if(e.kind==='knight' && hasTech(e.side,'cavalry')) value*=1.18;
+  return value;
+}
+function gatherRateFor(e){
+  let value=DEFS[e.kind].gather || 0;
+  if(hasTech(e.side,'wheelbarrow')) value*=1.25;
+  if(isAiSide(e.side)) value*=aiProfile().gather;
+  return value;
+}
+function carryFor(e){
+  let value=DEFS[e.kind].carry || 0;
+  if(hasTech(e.side,'wheelbarrow')) value*=1.25;
+  return value;
+}
+
+function canStartResearch(side,id,building){
+  const r=sideState(side), def=RESEARCH[id];
+  if(!r || !def || r.research) return false;
+  if(!building || building.side!==side || !building.constructed || building.kind!==def.from) return false;
+  if(def.toAge){ if(r.age!==def.age) return false; }
+  else { if(r.age<def.age || r.techs[id]) return false; }
+  return r.g>=def.g && r.w>=def.w;
+}
+function startResearch(side,id,building){
+  if(!canStartResearch(side,id,building)) return false;
+  const r=sideState(side), def=RESEARCH[id];
+  r.g-=def.g; r.w-=def.w;
+  r.research={id,t:def.t,total:def.t};
+  return true;
+}
+function completeResearch(side,id){
+  const r=sideState(side), def=RESEARCH[id];
+  if(!r || !def) return;
+  if(def.toAge) r.age=def.toAge;
+  else r.techs[id]=true;
+  r.research=null;
+  for(const e of G.ents){
+    if(e.side!==side) continue;
+    const upgraded=maxHpFor(side,e.kind);
+    if(upgraded>e.maxHp){ e.hp+=upgraded-e.maxHp; e.maxHp=upgraded; }
+  }
+  const message=def.toAge ? AGE_DEFS[def.toAge].name : def.name;
+  if(side===mySide || mode==='sp') toast('⚙ '+COLOR[side].name+': '+message);
+}
+function stepResearch(dt){
+  for(const side of ['red','blue']){
+    const r=sideState(side);
+    if(!r || !r.research) continue;
+    r.research.t-=dt;
+    if(r.research.t<=0) completeResearch(side,r.research.id);
+  }
+}
+
 function spawn(side, kind, x, y, constructed=true) {
   const d = DEFS[kind];
+  const maxHp=maxHpFor(side,kind);
   const e = {
     id: nid(), side, kind, x, y,
-    hp: constructed ? d.hp : Math.max(1, Math.round(d.hp*0.08)),
-    maxHp: d.hp,
+    hp: constructed ? maxHp : Math.max(1, Math.round(maxHp*0.08)),
+    maxHp,
     building: !!d.building,
     constructed,
     bp: constructed ? 1 : 0,           // build progress 0..1
@@ -97,6 +222,12 @@ function addNode(type, x, y, amount) {
 // ---------- Inicialización de partida ----------
 function initMap() {
   G = freshState();
+  AI.t=0; AI.lastBuild=0;
+  if(mode==='sp'){
+    const profile=aiProfile();
+    G.res[enemySide].g+=profile.startBonus;
+    G.res[enemySide].w+=profile.startBonus;
+  }
   TERRAIN.init();
   FF.init();
   FOG.init();
@@ -150,7 +281,7 @@ function recalcPop() {
       if (e.kind==='house') cap += DEFS.house.pop;
     }
     G.res[side].pop = pop;
-    G.res[side].cap = Math.min(60, cap);
+    G.res[side].cap = Math.min(ageOf(side)>=3?80:60, cap);
   }
 }
 
@@ -192,8 +323,8 @@ function nearestEnemy(side, x, y, maxR){
 
 // ---------- Comandos (autoridad: host/sp) ----------
 function canAfford(side, key, pop=0){
-  const r=G.res[side], c=COST[key];
-  if(!c) return false;
+  const r=sideState(side), c=COST[key];
+  if(!r||!c) return false;
   if(r.g < (c.g||0)) return false;
   if(r.w < (c.w||0)) return false;
   if(pop && r.pop + (c.pop||0) > r.cap) return false;
@@ -234,6 +365,7 @@ function applyCommand(cmd, side){
     case 'build': {
       const key=cmd.kind;
       if(!COST[key]||!COST[key].build) break;
+      if(!canBuildKind(side,key)) break;
       if(!canAfford(side,key)) break;
       // valida posición (no encima de otro edificio/nodo)
       if(!validPlacement(cmd.x,cmd.y, DEFS[key].r)) break;
@@ -247,11 +379,15 @@ function applyCommand(cmd, side){
       const b=entById(cmd.buildingId);
       if(!b||b.side!==side||!b.constructed||!b.building) break;
       const c=COST[cmd.unit];
-      if(!c||c.from!==b.kind) break;
+      if(!c||c.from!==b.kind||!canTrainUnit(side,cmd.unit)) break;
       if(b.queue.length>=8) break;
       if(!canAfford(side,cmd.unit,1)) break;
       pay(side,cmd.unit);
       b.queue.push({unit:cmd.unit, t:c.t});
+      break; }
+    case 'research': {
+      const b=entById(cmd.buildingId);
+      startResearch(side,cmd.researchId,b);
       break; }
     case 'rally': {
       const b=entById(cmd.buildingId);
@@ -268,9 +404,10 @@ function applyCommand(cmd, side){
 }
 
 function validPlacement(x,y,r){
-  if(x<r||y<r||x>MAP_W-r||y>MAP_H-r) return false;
-  for(const e of G.ents){ if(e.building && dist(x,y,e.x,e.y) < r+DEFS[e.kind].r+6) return false; }
-  for(const n of G.nodes){ if(dist(x,y,n.x,n.y) < r+n.r+6) return false; }
+  const state=activeState();
+  if(!state||x<r||y<r||x>MAP_W-r||y>MAP_H-r) return false;
+  for(const e of state.ents){ if(e.building && dist(x,y,e.x,e.y) < r+DEFS[e.kind].r+6) return false; }
+  for(const n of state.nodes){ if(dist(x,y,n.x,n.y) < r+n.r+6) return false; }
   return true;
 }
 
@@ -319,8 +456,8 @@ const TERRAIN = {
       for(let cx=0; cx<this.COLS; cx++){
         if(this.biomes[cy*this.COLS+cx]!==0) continue;
         const r=rng(cx,cy,7);
-        if(r<0.12) this.set(cx,cy,1,2.5);       // barro
-        else if(r<0.04) this.set(cx,cy,2,255);   // agua (menor probabilidad)
+        if(r<0.04) this.set(cx,cy,2,255);       // agua
+        else if(r<0.16) this.set(cx,cy,1,2.5);  // barro
       }
     }
 
@@ -848,6 +985,7 @@ let ffRebuildT = 0;
 function step(dt){
   if(G.winner) return;
   G.time += dt; G.tick++;
+  stepResearch(dt);
 
   // Reconstruye cost field cada 3s
   ffRebuildT -= dt;
@@ -874,12 +1012,12 @@ function step(dt){
         }
       }
       // torres y castillo disparan
-      const d=DEFS[e.kind];
-      if(d.range){
+      const d=DEFS[e.kind], range=rangeFor(e);
+      if(range){
         e.cd-=dt;
         let tgt=entById(e.targetId);
-        if(!tgt||tgt.hp<=0||dist(e.x,e.y,tgt.x,tgt.y)>d.range){ tgt=nearestEnemy(e.side,e.x,e.y,d.range); e.targetId=tgt?tgt.id:0; }
-        if(tgt&&e.cd<=0){ shoot(e,tgt,d.atk,true); e.cd=d.cd; }
+        if(!tgt||tgt.hp<=0||dist(e.x,e.y,tgt.x,tgt.y)>range){ tgt=nearestEnemy(e.side,e.x,e.y,range); e.targetId=tgt?tgt.id:0; }
+        if(tgt&&e.cd<=0){ shoot(e,tgt,attackFor(e),true); e.cd=d.cd; }
       }
       continue;
     }
@@ -954,11 +1092,11 @@ function stepUnit(e, dt){
   let tgt=entById(e.targetId);
   if(tgt && tgt.hp>0 && (o&&(o.type==='attack'||o.type==='attackmove') || e.kind!=='villager')){
     const dd=dist(e.x,e.y,tgt.x,tgt.y);
-    const reach=d.range+DEFS[tgt.kind].r;
+    const reach=rangeFor(e)+DEFS[tgt.kind].r;
     if(dd<=reach){
       e.moving=false;
       if(e.cd<=0){
-        const atk=d.atk*(e.atkMul||1);
+        const atk=attackFor(e)*(e.atkMul||1);
         if(d.ranged) shoot(e,tgt,atk,false);
         else damage(tgt, atk, e.side);
         e.cd=d.cd;
@@ -976,7 +1114,8 @@ function stepUnit(e, dt){
 
   // ---- Recolección ----
   if(o.type==='gather' && e.kind==='villager'){
-    if(e.carry>=d.carry){
+    const carryLimit=carryFor(e);
+    if(e.carry>=carryLimit){
       // volver a dejar
       const drop=nearestDrop(e.side,e.x,e.y);
       if(!drop){ e.moving=false; return; }
@@ -992,7 +1131,7 @@ function stepUnit(e, dt){
     if(!n){ e.moving=false; e.order=null; return; }
     if(dist(e.x,e.y,n.x,n.y) <= n.r+14){
       e.moving=false;
-      const amt=Math.min(d.gather*dt, n.amount, d.carry-e.carry);
+      const amt=Math.min(gatherRateFor(e)*dt, n.amount, carryLimit-e.carry);
       e.carry+=amt; n.amount-=amt; e.carryType=n.type;
     } else moveToward(e, n.x, n.y, dt);
     return;
@@ -1023,7 +1162,7 @@ function moveToward(e, tx, ty, dt){
   const d = DEFS[e.kind];
   const dx = tx - e.x, dy = ty - e.y, dd = Math.hypot(dx, dy);
   if (dd < 1) { e.moving = false; return; }
-  const sp = d.speed * (e.spdMul || 1) * dt;
+  const sp = speedFor(e) * (e.spdMul || 1) * dt;
 
   let vx, vy;
   if (dd > FF.CELL * 1.5) {
@@ -1124,57 +1263,79 @@ function separate(){
 }
 
 // ---------- IA (enemigo en single player) ----------
-const AI = { t:0, attackAt:60, lastBuild:0 };
+const AI = { t:0, lastBuild:0 };
+function aiTryResearch(side,castle,barracks,profile){
+  const r=sideState(side); if(!r) return null;
+  if(r.research) return 'active';
+  // AI_AGE_RESERVE: al llegar el momento de avanzar, conserva recursos hasta pagarlo.
+  if(r.age===1 && G.time>=profile.age2At){
+    return startResearch(side,'age2',castle)?'active':'save-age';
+  }
+  if(r.age===2 && G.time>=profile.age3At){
+    return startResearch(side,'age3',castle)?'active':'save-age';
+  }
+  if(r.age===1 && barracks.length===0) return null;
+  const priorities=r.age>=3
+    ? ['cavalry','forgedBlades','fletching','masonry','wheelbarrow']
+    : r.age>=2 ? ['forgedBlades','fletching','masonry','wheelbarrow'] : ['wheelbarrow'];
+  for(const id of priorities){
+    const def=RESEARCH[id];
+    const building=def.from==='castle'?castle:barracks[0];
+    if(building && startResearch(side,id,building)) return 'active';
+  }
+  return null;
+}
 function aiStep(dt){
   AI.t += dt;
-  const side=enemySide, r=G.res[side];
-  // cada ~1s toma decisiones
-  if(G.tick % 20 !== 0) return;
+  const side=enemySide, r=G.res[side], profile=aiProfile();
+  if(G.tick % profile.decisionTicks !== 0) return;
 
   const mine = G.ents.filter(e=>e.side===side);
   const castle = mine.find(e=>e.kind==='castle'&&e.constructed);
   if(!castle) return;
   const vills = mine.filter(e=>e.kind==='villager');
-  const army  = mine.filter(e=>!e.building && e.kind!=='villager');
+  const army  = mine.filter(e=>!e.building && e.kind!=='villager' && e.kind!=='king');
   const barracks = mine.filter(e=>e.kind==='barracks'&&e.constructed);
-  const houses = mine.filter(e=>e.kind==='house');
   const towers = mine.filter(e=>e.kind==='tower');
 
-  // 1) aldeanos ociosos -> recolectar (balance oro/madera)
   const idleV = vills.filter(v=>!v.order || (v.order.type==='move'&&!v.moving));
   for(const v of idleV){
-    const wantWood = r.w < r.g*0.7;
+    const wantWood = r.w < r.g*0.72;
     const n=nearestNode(wantWood?'wood':'gold', v.x, v.y) || nearestNode(wantWood?'gold':'wood', v.x,v.y);
     if(n){ v.order={type:'gather'}; v.nodeId=n.id; v.carryType=n.type; v.moving=true; }
   }
 
-  // 2) entrenar aldeanos hasta 10
-  if(vills.length<10 && castle.queue.length===0 && canAfford(side,'villager',1)){
+  const researchPlan=aiTryResearch(side,castle,barracks,profile);
+  const savingForAge=researchPlan==='save-age';
+
+  if(!savingForAge && vills.length<profile.villagers && castle.queue.length<profile.queueDepth && canAfford(side,'villager',1)){
     applyCommand({type:'train', buildingId:castle.id, unit:'villager'}, side);
   }
-
-  // 3) casa si pop cerca del tope
-  if(r.pop >= r.cap-2 && r.cap<60 && canAfford(side,'house') && AI.t-AI.lastBuild>3){
+  if(!savingForAge && r.pop >= r.cap-2 && r.cap<(r.age>=3?80:60) && canAfford(side,'house') && AI.t-AI.lastBuild>2.5){
     aiBuild(side, castle, 'house'); AI.lastBuild=AI.t;
   }
-  // 4) cuartel
-  if(barracks.length===0 && r.w>=150 && vills.length>=5 && AI.t-AI.lastBuild>3){
+  if(!savingForAge && barracks.length===0 && r.w>=150 && vills.length>=5 && AI.t-AI.lastBuild>3){
     aiBuild(side, castle, 'barracks'); AI.lastBuild=AI.t;
   }
-  // 5) torres defensivas (hasta 2)
-  if(towers.length<2 && barracks.length>0 && canAfford(side,'tower') && AI.t-AI.lastBuild>6){
+  if(!savingForAge && r.age>=2 && towers.length<profile.towers && barracks.length>0 && canAfford(side,'tower') && AI.t-AI.lastBuild>5){
     aiBuild(side, castle, 'tower'); AI.lastBuild=AI.t;
   }
-  // 6) entrenar ejército
-  for(const b of barracks){
-    if(b.queue.length<2){
-      const roll=Math.random();
-      const unit = roll<0.45?'swordsman' : roll<0.8?'archer' : 'knight';
-      if(canAfford(side,unit,1)) applyCommand({type:'train', buildingId:b.id, unit}, side);
+
+
+  if(!savingForAge){
+    const available=['swordsman'];
+    if(r.age>=2) available.push('archer');
+    if(r.age>=3) available.push('knight');
+    for(const b of barracks){
+      while(b.queue.length<profile.queueDepth){
+        const unit=available[Math.floor(Math.random()*available.length)];
+        if(!canAfford(side,unit,1)) break;
+        applyCommand({type:'train', buildingId:b.id, unit}, side);
+      }
     }
   }
-  // 7) atacar cuando hay ejército suficiente (umbral crece con el tiempo)
-  const threshold = 4 + Math.floor(G.time/90);
+
+  const threshold = profile.attackBase + Math.floor(G.time/profile.attackGrowth);
   const enemyCastle = G.ents.find(e=>e.side===mySide && e.kind==='castle');
   if(enemyCastle && army.length>=threshold){
     const free = army.filter(u=>!u.order || u.order.type==='move' || (u.order.type==='attackmove'&&!entById(u.targetId)));
@@ -1182,12 +1343,11 @@ function aiStep(dt){
   }
 }
 function aiBuild(side, castle, kind){
-  if(!canAfford(side,kind)) return;
+  if(!canAfford(side,kind) || !canBuildKind(side,kind)) return;
   for(let i=0;i<30;i++){
     const a=Math.random()*Math.PI*2, rd=90+Math.random()*160;
     const x=castle.x+Math.cos(a)*rd, y=castle.y+Math.sin(a)*rd;
     if(validPlacement(x,y,DEFS[kind].r)){
-      // toma un aldeano libre
       const v=G.ents.find(e=>e.side===side&&e.kind==='villager');
       if(!v) return;
       applyCommand({type:'build', kind, x, y, villagerIds:[v.id]}, side);
@@ -1317,7 +1477,7 @@ function render(){
 
   // fantasma de construcción
   if(buildKind && mouse.wx!=null){
-    const ok=validPlacement(mouse.wx,mouse.wy,DEFS[buildKind].r) && canAfford(mySide,buildKind);
+    const ok=canBuildKind(mySide,buildKind) && validPlacement(mouse.wx,mouse.wy,DEFS[buildKind].r) && canAfford(mySide,buildKind);
     ctx.globalAlpha=0.5;
     ctx.fillStyle= ok?COLOR[mySide].main:'#888';
     circle(mouse.wx,mouse.wy,DEFS[buildKind].r);
@@ -1748,7 +1908,7 @@ function toast(msg){
 }
 function tryCheat(){
   cheatBuf='';
-  if(mySide!=='red' || !G || !running || G.winner) return;
+  if(mode!=='sp' || mySide!=='red' || !G || !running || G.winner) return;
   const now=performance.now();
   if(now<cheatReadyAt){ toast(`⏳ Trampita en enfriamiento — ${Math.ceil((cheatReadyAt-now)/1000)}s`); return; }
   const king=G.ents.find(x=>x.side==='red'&&x.kind==='king'&&x.hp>0);
@@ -2059,7 +2219,14 @@ function selHasVillager(){
   return false;
 }
 
-function setBuild(kind){ buildKind=kind; }
+function setBuild(kind){
+  const required=BUILDING_AGE[kind]||1;
+  if(!canBuildKind(mySide,kind)){
+    toast('🔒 Requiere '+AGE_DEFS[required].name);
+    return;
+  }
+  buildKind=kind;
+}
 function placeBuilding(){
   if(!buildKind) return;
   const vIds=[...sel].filter(id=>{const e=entById2(renderState(),id); return e&&e.kind==='villager';});
@@ -2075,8 +2242,11 @@ function updateHUD(){
   setText('gold', Math.floor(r.g));
   setText('wood', Math.floor(r.w));
   setText('pop', r.pop+'/'+r.cap);
+  const ageName=AGE_DEFS[r.age||1].name;
+  const researchText=r.research?` · ⚙ ${RESEARCH[r.research.id].name} ${Math.max(0,Math.ceil(r.research.t))}s`:'';
+  setText('ageInfo', ageName+researchText);
   const er=S.res[enemySide];
-  setText('enemyInfo', `${COLOR[enemySide].name}  🪙${Math.floor(er.g)} 🪵${Math.floor(er.w)} 👥${er.pop}`);
+  setText('enemyInfo', `${COLOR[enemySide].name} · ${AGE_DEFS[er.age||1].name}  🪙${Math.floor(er.g)} 🪵${Math.floor(er.w)} 👥${er.pop}`);
 
   if(S.winner){ showEnd(S.winner); }
 }
@@ -2099,8 +2269,21 @@ function refreshPanel(){
   if(ids.length===1){
     const e=entById2(S,ids[0]);
     if(e && e.building && e.constructed){
-      if(e.kind==='castle') addTrainBtn(panel,e,'villager','Aldeano','H');
-      if(e.kind==='barracks'){ addTrainBtn(panel,e,'swordsman','Espadachín','A'); addTrainBtn(panel,e,'archer','Arquero','S'); addTrainBtn(panel,e,'knight','Caballero','D'); }
+      if(e.kind==='castle'){
+        addTrainBtn(panel,e,'villager','Aldeano','H');
+        addResearchBtn(panel,e,'wheelbarrow');
+        addResearchBtn(panel,e,'masonry');
+        addResearchBtn(panel,e,'age2');
+        addResearchBtn(panel,e,'age3');
+      }
+      if(e.kind==='barracks'){
+        addTrainBtn(panel,e,'swordsman','Espadachín','A');
+        addTrainBtn(panel,e,'archer','Arquero','S');
+        addTrainBtn(panel,e,'knight','Caballero','D');
+        addResearchBtn(panel,e,'forgedBlades');
+        addResearchBtn(panel,e,'fletching');
+        addResearchBtn(panel,e,'cavalry');
+      }
       if(e.queue && e.queue.length) addCancelBtn(panel,e);
       return;
     }
@@ -2118,9 +2301,28 @@ function btn(label, sub){
   return b;
 }
 function addTrainBtn(panel,e,unit,label,hk){
-  const c=COST[unit];
-  const b=btn(label, `🪙${c.g} ${c.w?'🪵'+c.w:''}`);
+  const c=COST[unit], S=renderState(), r=S.res[mySide], required=UNIT_AGE[unit]||1;
+  const locked=(r.age||1)<required;
+  const b=btn(locked?`🔒 ${label}`:label, locked?`requiere ${AGE_DEFS[required].name}`:`🪙${c.g} ${c.w?'🪵'+c.w:''}`);
+  b.disabled=locked;
   b.onclick=()=>issue({type:'train', buildingId:e.id, unit});
+  panel.appendChild(b);
+}
+function addResearchBtn(panel,e,id){
+  const def=RESEARCH[id], S=renderState(), r=S.res[mySide];
+  if(!def || def.from!==e.kind) return;
+  if(def.toAge && r.age!==def.age) return;
+  if(!def.toAge && (r.age<def.age || r.techs?.[id])) return;
+  const active=r.research;
+  const researching=active && active.id===id;
+  const busy=!!active;
+  const affordable=r.g>=def.g && r.w>=def.w;
+  const label=researching?`⚙ ${def.name}`:def.name;
+  const sub=researching?`${Math.max(0,Math.ceil(active.t))}s`:`🪙${def.g} 🪵${def.w} · ${def.t}s${def.note?' · '+def.note:''}`;
+  const b=btn(label,sub);
+  b.classList.add('research');
+  b.disabled=busy||!affordable;
+  b.onclick=()=>issue({type:'research', buildingId:e.id, researchId:id});
   panel.appendChild(b);
 }
 function addCancelBtn(panel,e){
@@ -2130,7 +2332,10 @@ function addCancelBtn(panel,e){
   panel.appendChild(b);
 }
 function addBuildBtn(panel,kind,label,sub){
-  const b=btn(label,sub);
+  const required=BUILDING_AGE[kind]||1;
+  const locked=!canBuildKind(mySide,kind);
+  const b=btn(locked?'🔒 '+label:label,locked?'requiere '+AGE_DEFS[required].name:sub);
+  b.disabled=locked;
   b.onclick=()=>setBuild(kind);
   panel.appendChild(b);
 }
@@ -2165,6 +2370,7 @@ function onSnapshot(s){
 // ---------- Arranque / menús ----------
 function startGame(opts){
   mode=opts.mode; mySide=opts.side; enemySide = mySide==='red'?'blue':'red';
+  aiDifficulty=AI_PROFILES[opts.difficulty]?opts.difficulty:'warrior';
   SFX.init(); SFX.resume();
   resize();
   if(mode==='client'){
@@ -2215,7 +2421,12 @@ let _currentRoomCode = '';
 let _inviteUrl = '';
 
 window.REINOS = {
-  startSolo(side){ startGame({mode:'sp', side}); },
+  startSolo(side,difficulty='warrior'){ startGame({mode:'sp', side, difficulty}); },
+
+  getMatchMeta(){
+    const S=renderState();
+    return {mode, side:mySide, difficulty:mode==='sp'?aiDifficulty:'human', age:S?.res?.[mySide]?.age||1};
+  },
 
   hostGame(){
     const code = Net.makeCode();

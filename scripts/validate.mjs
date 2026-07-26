@@ -78,4 +78,16 @@ for (const asset of ['./chronicle.css', './chronicle.js']) {
   if (!serviceWorker.includes(asset)) throw new Error(`El service worker no cachea ${asset}`);
 }
 
-console.log('Validación estática, contrato de salas y Crónica de Guerra completados.');
+for (const marker of ['const AGE_DEFS =', 'const RESEARCH =', "case 'research'", 'stepResearch(dt)', 'getMatchMeta()', 'AI_AGE_RESERVE', 'activeState()', 'savingForAge']) {
+  if (!game.includes(marker)) throw new Error(`Era de Conquista incompleta en game.js: falta ${marker}`);
+}
+for (const marker of ['allowedResearch', "case 'research'"]) {
+  if (!net.includes(marker)) throw new Error(`Contrato P2P de tecnologías incompleto: falta ${marker}`);
+}
+for (const id of ['difficultySelect', 'ageInfo']) {
+  if (!html.includes(`id="${id}"`)) throw new Error(`Falta la interfaz de conquista #${id}`);
+}
+const sw = await readFile('rey/sw.js', 'utf8');
+if (!sw.includes('reinos-conquista-v3')) throw new Error('La PWA no renovó su caché para Era de Conquista');
+
+console.log('Validación estática, salas, crónica y Era de Conquista completadas.');
