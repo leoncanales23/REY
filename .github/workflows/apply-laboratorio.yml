@@ -19,18 +19,22 @@ jobs:
         run: |
           rm -rf ./* ./.git
           git clone --quiet --branch "$HEAD_REF" "https://x-access-token:${GH_TOKEN}@github.com/${REPOSITORY}.git" .
-      - name: Reconstruct and verify laboratory transformer
+      - name: Apply base laboratory when missing
         run: |
+          if grep -q 'REPLAY_SEEDED_RNG' rey/game.js; then
+            echo 'Laboratory base already present'
+            exit 0
+          fi
           cat scripts/apply-lab.parts/0{1,2,3,4,5,6} > /tmp/apply-lab.py.gz.b64
           test "$(wc -c < /tmp/apply-lab.py.gz.b64)" -eq 14164
           echo "b38403c19add2f2b013f45add63e6c68beb9f6450392fb57a5262de9b88b250f  /tmp/apply-lab.py.gz.b64" | sha256sum -c -
           base64 -d /tmp/apply-lab.py.gz.b64 | gzip -d > /tmp/apply-lab.py
           echo "0ed9c8e2655b82e52ffcdd48994d57204388556e93d6b3921495195a9f44110c  /tmp/apply-lab.py" | sha256sum -c -
-      - name: Apply scenario and replay laboratory
-        run: |
           python3 scripts/prepare-lab-transformer.py
           python3 /tmp/apply-lab.py
           python3 scripts/apply-lab-validator.py
+      - name: Apply laboratory hardening
+        run: python3 scripts/finalize-laboratorio.py
       - name: Validate generated laboratory
         run: |
           node --check rey/game.js
@@ -45,11 +49,11 @@ jobs:
       - name: Commit generated source
         run: |
           if git diff --quiet; then
-            echo "Laboratory already applied"
+            echo "Laboratory already hardened"
             exit 0
           fi
           git config user.name "reinos-lab-bot"
           git config user.email "actions@users.noreply.github.com"
           git add rey README.md scripts/validate.mjs
-          git commit -m "feat: add scenario laboratory and deterministic replays [lab-generated]"
+          git commit -m "fix: harden replay integrity and Crown scenarios [lab-final]"
           git push origin HEAD:${{ github.head_ref }}
