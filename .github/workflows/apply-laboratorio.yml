@@ -11,13 +11,14 @@ jobs:
   transform:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ github.head_ref }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
+      - name: Clone pull request branch quietly
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          rm -rf ./* ./.git
+          git clone --quiet --branch "$HEAD_REF" "https://x-access-token:${GH_TOKEN}@github.com/${REPOSITORY}.git" .
       - name: Apply scenario and replay laboratory
         run: |
           base64 -d scripts/apply-lab.py.gz.b64 | gzip -d > /tmp/apply-lab.py
