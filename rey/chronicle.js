@@ -43,6 +43,7 @@
   function modeName(mode) {
     if (mode === 'host') return 'Duelo online · anfitrión';
     if (mode === 'client') return 'Duelo online · invitado';
+    if (mode === 'campaign') return 'Campaña';
     return 'Un jugador';
   }
 
@@ -51,7 +52,10 @@
   }
 
   function victoryReasonName(value) {
-    return value === 'supremacy' ? 'Supremacía de Bastiones' : 'Castillo destruido';
+    if (value === 'supremacy') return 'Supremacía de Bastiones';
+    if (value === 'campaign') return 'Objetivo de campaña';
+    if (value === 'campaignFailure') return 'Rey caído';
+    return 'Castillo destruido';
   }
 
   function difficultyName(value) {
@@ -81,14 +85,15 @@
     }
   }
 
-  function beginBattle(mode, side, room = null, difficulty = 'warrior') {
+  function beginBattle(mode, side, room = null, difficulty = 'warrior', extras = {}) {
     activeBattle = {
       id: battleId(),
       startedAt: Date.now(),
       mode,
       side: normalizeSide(side),
       room: room || null,
-      difficulty: mode === 'sp' ? difficulty : 'human',
+      difficulty: mode === 'sp' || mode === 'campaign' ? difficulty : 'human',
+      ...extras,
     };
     finalizedBattleId = null;
     sessionStorage.setItem(ACTIVE_KEY, JSON.stringify(activeBattle));
@@ -151,6 +156,7 @@
       supremacyWins: history.filter((entry) => entry.result === 'victory' && entry.victoryReason === 'supremacy').length,
       commanderUses: history.reduce((sum, entry) => sum + (entry.commanderUses || 0), 0),
       mercenaries: history.reduce((sum, entry) => sum + (entry.mercenariesHired || 0), 0),
+      campaignStars: history.reduce((sum, entry) => sum + (entry.campaignStars || 0), 0),
     };
   }
 
@@ -181,6 +187,7 @@
     appendStat(statsContainer, 'supremacías', stats.supremacyWins);
     appendStat(statsContainer, 'poderes usados', stats.commanderUses);
     appendStat(statsContainer, 'mercenarios', stats.mercenaries);
+    appendStat(statsContainer, 'estrellas', stats.campaignStars);
     appendStat(statsContainer, 'duración media', formatDuration(stats.averageMs));
 
     list.replaceChildren();
@@ -207,7 +214,8 @@
 
       const details = document.createElement('div');
       details.className = 'chronicle-entry-details';
-      details.textContent = `${sideName(entry.side)} · ${factionName(entry.side)} · ${modeName(entry.mode)} · ${difficultyName(entry.difficulty)} · ${victoryReasonName(entry.victoryReason)} · 👑${entry.commanderUses||0} · ⚔${entry.mercenariesHired||0} · Edad ${entry.finalAge||1} · ${formatDuration(entry.durationMs)}`;
+      const campaignLabel=entry.campaignTitle?` · ${entry.campaignTitle} · ${'★'.repeat(entry.campaignStars||0)}${'☆'.repeat(3-(entry.campaignStars||0))}`:'';
+      details.textContent = `${sideName(entry.side)} · ${factionName(entry.side)} · ${modeName(entry.mode)}${campaignLabel} · ${difficultyName(entry.difficulty)} · ${victoryReasonName(entry.victoryReason)} · 👑${entry.commanderUses||0} · ⚔${entry.mercenariesHired||0} · Edad ${entry.finalAge||1} · ${formatDuration(entry.durationMs)}`;
 
       article.append(header, details);
       list.appendChild(article);
@@ -232,6 +240,7 @@
     appendStat(grid, 'poderes', entry.commanderUses||0);
     appendStat(grid, 'mercenarios', entry.mercenariesHired||0);
     appendStat(grid, 'eventos', entry.worldEvents||0);
+    if(entry.campaignTitle){ appendStat(grid, 'misión', entry.campaignTitle); appendStat(grid, 'estrellas', `${entry.campaignStars||0}/3`); }
     appendStat(grid, 'racha', entry.result === 'victory' ? streak : 0);
     summary.appendChild(grid);
   }
@@ -257,6 +266,9 @@
       mercenariesHired: meta.mercenariesHired || 0,
       worldEvents: meta.worldEvents || 0,
       lastWorldEvent: meta.lastWorldEvent || null,
+      campaignId: meta.campaignId || activeBattle.campaignId || null,
+      campaignTitle: meta.campaignTitle || activeBattle.campaignTitle || null,
+      campaignStars: meta.campaignStars || 0,
       finishedAt: Date.now(),
       durationMs: Math.max(1000, Date.now() - activeBattle.startedAt),
       result: titleText.includes('VICTORIA') ? 'victory' : 'defeat',
@@ -308,6 +320,18 @@
       originalSolo(side, difficulty);
       beginBattle('sp', side, null, difficulty);
     };
+
+    if (typeof REINOS.startCampaign === 'function') {
+      const originalCampaign = REINOS.startCampaign.bind(REINOS);
+      REINOS.startCampaign = (id) => {
+        const mission = typeof REINOS.getCampaignDefinitions === 'function'
+          ? REINOS.getCampaignDefinitions().find((item) => item.id === id)
+          : null;
+        const started = originalCampaign(id);
+        if (started !== false && mission) beginBattle('campaign', mission.side, null, mission.difficulty, { campaignId:id, campaignTitle:mission.title });
+        return started;
+      };
+    }
 
     const originalHost = REINOS.hostGame.bind(REINOS);
     REINOS.hostGame = () => {

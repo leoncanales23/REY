@@ -5,10 +5,12 @@ const required = [
   'rey/index.html',
   'rey/style.css',
   'rey/chronicle.css',
+  'rey/campaign.css',
   'rey/net.js',
   'rey/game.js',
   'rey/app.js',
   'rey/chronicle.js',
+  'rey/campaign.js',
   'rey/sw.js',
   'rey/manifest.webmanifest',
   'rey/icons/reinos-192.png',
@@ -24,9 +26,10 @@ const app = await readFile('rey/app.js', 'utf8');
 const game = await readFile('rey/game.js', 'utf8');
 const net = await readFile('rey/net.js', 'utf8');
 const chronicle = await readFile('rey/chronicle.js', 'utf8');
+const campaign = await readFile('rey/campaign.js', 'utf8');
 const serviceWorker = await readFile('rey/sw.js', 'utf8');
 
-for (const ref of ['style.css', 'chronicle.css', 'net.js', 'game.js', 'app.js', 'chronicle.js', 'manifest.webmanifest']) {
+for (const ref of ['style.css', 'chronicle.css', 'campaign.css', 'net.js', 'game.js', 'app.js', 'chronicle.js', 'campaign.js', 'manifest.webmanifest']) {
   if (!html.includes(ref)) throw new Error(`index.html no referencia ${ref}`);
 }
 
@@ -74,7 +77,7 @@ for (const marker of ['localStorage', 'sessionStorage', 'MutationObserver', 'fin
   if (!chronicle.includes(marker)) throw new Error(`Crónica de Guerra incompleta: falta ${marker}`);
 }
 
-for (const asset of ['./chronicle.css', './chronicle.js']) {
+for (const asset of ['./chronicle.css', './chronicle.js', './campaign.css', './campaign.js']) {
   if (!serviceWorker.includes(asset)) throw new Error(`El service worker no cachea ${asset}`);
 }
 
@@ -84,11 +87,11 @@ for (const marker of ['const AGE_DEFS =', 'const RESEARCH =', "case 'research'",
 for (const marker of ['allowedResearch', "case 'research'", 'allowedAbilities', 'allowedCamps', "case 'ability'", "case 'hireMercenaries'"]) {
   if (!net.includes(marker)) throw new Error(`Contrato P2P de tecnologías incompleto: falta ${marker}`);
 }
-for (const id of ['difficultySelect', 'ageInfo', 'factionInfo', 'objectiveInfo', 'eventInfo']) {
+for (const id of ['difficultySelect', 'ageInfo', 'factionInfo', 'objectiveInfo', 'eventInfo', 'campaignInfo', 'openCampaignBtn', 'campaignDialog', 'campaignMissions', 'campaignProgress', 'campaignRetryBtn', 'campaignNextBtn']) {
   if (!html.includes(`id="${id}"`)) throw new Error(`Falta la interfaz de conquista #${id}`);
 }
 const sw = await readFile('rey/sw.js', 'utf8');
-if (!sw.includes('reinos-comandantes-v5')) throw new Error('La PWA no renovó su caché para Comandantes y Eventos');
+if (!sw.includes('reinos-campana-v6')) throw new Error('La PWA no renovó su caché para Campaña de los Dos Reyes');
 
 for (const marker of ['const FACTIONS =', 'OBJECTIVE_DEFS', 'stepObjectives(dt)', "victoryReason='supremacy'", 'objectives: G.objectives', 'aiObjectiveTarget', 'FOG.update(mySide,S)', 'AI_HOLD_SUPREMACY', 'OBJECTIVES_AFTER_FOG']) {
   if (!game.includes(marker)) throw new Error(`Reinos Asimétricos incompleto: falta ${marker}`);
@@ -105,4 +108,14 @@ for (const marker of ['commanderUses', 'mercenariesHired', 'worldEvents']) {
 }
 if (game.includes('CHEAT_CODE') || game.includes('tryCheat')) throw new Error('El código secreto antiguo sigue activo después de oficializar habilidades');
 
-console.log('Validación estática, salas, crónica, conquista, asimetría, comandantes y eventos completadas.');
+for (const marker of ['const CAMPAIGN_MISSIONS =', 'applyCampaignSetup', 'stepCampaign(dt)', 'scoreCampaign', "CustomEvent('reinos:campaign-complete'", 'startCampaign(id)', 'getCampaignDefinitions', 'CAMPAIGN_RESTART_RESET']) {
+  if (!game.includes(marker)) throw new Error(`Campaña incompleta en game.js: falta ${marker}`);
+}
+for (const marker of ['reinos.campaign.v1', 'bestStars', 'reinos:campaign-complete', 'campaignNextBtn', 'campaignRetryBtn', 'SINGLE_RETRY_HANDLER']) {
+  if (!campaign.includes(marker)) throw new Error(`Mapa de campaña incompleto: falta ${marker}`);
+}
+for (const marker of ['campaignId', 'campaignTitle', 'campaignStars', "beginBattle('campaign'"]) {
+  if (!chronicle.includes(marker)) throw new Error(`Crónica de campaña incompleta: falta ${marker}`);
+}
+
+console.log('Validación estática, salas, crónica, conquista, asimetría, comandantes, eventos y campaña completadas.');

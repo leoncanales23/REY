@@ -129,6 +129,18 @@
       setConnectionState('SOLO', true);
     };
 
+    if (typeof REINOS.startCampaign === 'function') {
+      const originalCampaign = REINOS.startCampaign.bind(REINOS);
+      REINOS.startCampaign = (id) => {
+        const started = originalCampaign(id);
+        if (started !== false) {
+          showMatchShell();
+          setConnectionState('CAMPAÑA', true);
+        }
+        return started;
+      };
+    }
+
     const originalHost = REINOS.hostGame.bind(REINOS);
     REINOS.hostGame = () => {
       originalHost();

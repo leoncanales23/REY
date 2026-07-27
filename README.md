@@ -71,3 +71,10 @@ Los Reyes disponen de habilidades activas desde la Edad de Fortaleza. León acti
 Dos campamentos neutrales permiten contratar Guardias Mercenarias. El Rey debe acercarse físicamente, pagar el contrato y disponer de población. Los campamentos tienen su propio enfriamiento y el Mercado de Guerra modifica temporalmente precio y disponibilidad.
 
 El mundo alterna entre Tiempo de Abundancia, Mercado de Guerra y Niebla Negra. Cada evento se anuncia 12 segundos antes, se sincroniza por snapshot y altera reglas concretas sin entregar victoria automática.
+
+
+## Campaña de los Dos Reyes
+
+La campaña añade tres actos desbloqueables sin alterar el duelo libre. **La Corona Vacía** enseña control territorial mediante una victoria especial por sostener el Bastión central. **El Pacto de Acero** coloca a Nelson frente a contratos mercenarios e inteligencia táctica. **La Última Corona** combina dificultad Conquistador, Niebla Negra inicial, comandantes, eventos, mercenarios y las dos condiciones clásicas de victoria.
+
+Cada misión entrega hasta tres estrellas según objetivos secundarios, tiempo y uso de sistemas. El progreso y la mejor puntuación se guardan localmente en el navegador mediante `reinos.campaign.v1`; la Crónica de Guerra conserva además el acto, la misión y las estrellas de cada intento terminado.

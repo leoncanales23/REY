@@ -12,6 +12,7 @@
 <link rel="apple-touch-icon" href="icons/reinos-192.png">
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="chronicle.css">
+<link rel="stylesheet" href="campaign.css">
 </head>
 <body class="crt">
   <canvas id="game" aria-label="Campo de batalla de REINOS"></canvas>
@@ -38,6 +39,11 @@
       <div class="row">
         <button class="btn red" onclick="REINOS.startSolo('red', document.getElementById('difficultySelect').value)">JUGAR COMO LEÓN<small>Legión del Rugido · melee + aura real</small></button>
         <button class="btn blue" onclick="REINOS.startSolo('blue', document.getElementById('difficultySelect').value)">JUGAR COMO NELSON<small>Orden del Horizonte · alcance + economía</small></button>
+      </div>
+      <div class="divider">— · · · —</div>
+      <h2>CAMPAÑA DE LOS DOS REYES</h2>
+      <div class="row">
+        <button id="openCampaignBtn" class="btn campaign" type="button">ABRIR CAMPAÑA<small>3 actos · progreso persistente · 9 estrellas</small></button>
       </div>
       <div class="divider">— · · · —</div>
       <h2>DUELO ONLINE</h2>
@@ -73,6 +79,7 @@
     <div class="stat pop">👥 <span id="pop">0/10</span></div>
     <div class="stat objectives" id="objectiveInfo">BASTIONES 0/3</div>
     <div class="stat event" id="eventInfo">MUNDO ESTABLE</div>
+    <div class="stat" id="campaignInfo">ACTO I</div>
     <div class="stat" id="enemyInfo"></div>
   </div>
   <div id="matchTools" hidden>
@@ -86,6 +93,10 @@
     <div id="endTitle">FIN</div>
     <div id="endSub"></div>
     <div id="battleSummary" aria-live="polite"></div>
+    <div class="end-campaign-actions">
+      <button id="campaignRetryBtn" class="mini-btn" type="button" hidden>REINTENTAR MISIÓN</button>
+      <button id="campaignNextBtn" class="mini-btn" type="button" hidden>SIGUIENTE MISIÓN</button>
+    </div>
     <button class="btn" style="max-width:240px;" onclick="REINOS.restart()">VOLVER AL MENÚ</button>
   </div>
 
@@ -106,11 +117,30 @@
     </div>
   </dialog>
 
+  <dialog id="campaignDialog" class="campaign-dialog" aria-labelledby="campaignTitle">
+    <div class="campaign-shell">
+      <div class="campaign-header">
+        <div>
+          <span class="campaign-kicker">CRÓNICA JUGABLE</span>
+          <h2 id="campaignTitle">CAMPAÑA DE LOS DOS REYES</h2>
+        </div>
+        <button id="closeCampaignBtn" class="hud-btn" type="button" aria-label="Cerrar campaña">✕</button>
+      </div>
+      <div id="campaignProgress" class="campaign-progress"></div>
+      <div id="campaignMissions" class="campaign-missions"></div>
+      <div class="campaign-actions">
+        <button id="clearCampaignBtn" class="mini-btn danger" type="button">REINICIAR CAMPAÑA</button>
+        <button class="mini-btn" type="button" onclick="document.getElementById('campaignDialog').close()">CERRAR</button>
+      </div>
+    </div>
+  </dialog>
+
   <noscript>REINOS necesita JavaScript para ejecutar la simulación.</noscript>
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" crossorigin="anonymous"></script>
   <script src="net.js"></script>
   <script src="game.js"></script>
   <script src="app.js"></script>
   <script src="chronicle.js"></script>
+  <script src="campaign.js"></script>
 </body>
 </html>
