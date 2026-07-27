@@ -1,9 +1,0 @@
-Traceback (most recent call last):
-  File "/tmp/apply-lab.py", line 861, in <module>
-    patch_validate()
-  File "/tmp/apply-lab.py", line 804, in patch_validate
-    validate = replace_once(validate, """const chronicle = await readFile('rey/chronicle.js', 'utf8');
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/tmp/apply-lab.py", line 6, in replace_once
-    raise RuntimeError(f"No se encontró el anclaje: {label}")
-RuntimeError: No se encontró el anclaje: lectura módulos laboratorio
