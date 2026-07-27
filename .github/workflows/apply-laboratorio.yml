@@ -19,23 +19,23 @@ jobs:
         with:
           node-version: 22
       - name: Apply scenario and replay laboratory
+        id: apply_lab
+        continue-on-error: true
         run: |
           base64 -d scripts/apply-lab.py.gz.b64 | gzip -d > /tmp/apply-lab.py
-          set +e
           python3 /tmp/apply-lab.py > /tmp/lab-transform.log 2>&1
-          status=$?
-          set -e
-          if [ "$status" -ne 0 ]; then
-            cp /tmp/lab-transform.log scripts/lab-transform-error.txt
-            git config user.name "reinos-lab-bot"
-            git config user.email "actions@users.noreply.github.com"
-            git add scripts/lab-transform-error.txt
-            git commit -m "chore: capture laboratory transformer diagnostic" || true
-            git push origin HEAD:${{ github.head_ref }} || true
-            exit "$status"
-          fi
-          rm -f scripts/lab-transform-error.txt
+      - name: Upload transformer diagnostic
+        if: steps.apply_lab.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: laboratory-transform-diagnostic
+          path: /tmp/lab-transform.log
+          retention-days: 1
+      - name: Stop after transformer failure
+        if: steps.apply_lab.outcome == 'failure'
+        run: exit 1
       - name: Validate generated laboratory
+        if: steps.apply_lab.outcome == 'success'
         run: |
           node --check rey/game.js
           node --check rey/net.js
@@ -47,6 +47,7 @@ jobs:
           node --check rey/sw.js
           node scripts/validate.mjs
       - name: Commit generated source
+        if: steps.apply_lab.outcome == 'success'
         run: |
           if git diff --quiet; then
             echo "Laboratory already applied"
