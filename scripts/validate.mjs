@@ -97,7 +97,7 @@ for (const marker of ['victoryReasonName', 'finalObjectives', 'supremacyWins']) 
   if (!chronicle.includes(marker)) throw new Error(`Crónica asimétrica incompleta: falta ${marker}`);
 }
 
-for (const marker of ['const COMMANDER_ABILITIES =', 'MERCENARY_CAMP_DEFS', 'useCommanderAbility', 'hireMercenaries', 'stepWorldEvents(dt)', 'WORLD_EVENT_WARNING', 'AI_COMMANDER_USAGE', 'CLIENT_WORLD_ANNOUNCEMENT', 'mercenaryCamps:G.mercenaryCamps']) {
+for (const marker of ['const COMMANDER_ABILITIES =', 'MERCENARY_CAMP_DEFS', 'useCommanderAbility', 'hireMercenaries', 'stepWorldEvents(dt)', 'WORLD_EVENT_WARNING', 'AI_COMMANDER_USAGE', 'CLIENT_WORLD_ANNOUNCEMENT', 'mercenaryCamps:G.mercenaryCamps', 'ABILITY_TARGET_VALIDATED_FIRST', 'HORIZON_PROJECTILE_BONUS', 'COMMANDER_VISUAL_SIGNAL']) {
   if (!game.includes(marker)) throw new Error(`Comandantes y Eventos incompleto: falta ${marker}`);
 }
 for (const marker of ['commanderUses', 'mercenariesHired', 'worldEvents']) {

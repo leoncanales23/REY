@@ -109,7 +109,7 @@ const COMMANDER_ABILITIES = {
   },
   blue: {
     id:'horizonEye', name:'OJO DEL HORIZONTE', age:2, cooldown:65, duration:14, radius:340,
-    note:'revela una gran zona al centro de la cámara',
+    note:'revela una zona y da +18% daño de proyectiles contra objetivos dentro',
   },
 };
 
@@ -461,9 +461,10 @@ function useCommanderAbility(side,abilityId,kingId,x,y){
   const def=COMMANDER_ABILITIES[side], commander=commanderOf(side), king=entById(kingId), r=G.res[side];
   if(!def || def.id!==abilityId || !commander || !king || king.side!==side || king.kind!=='king' || king.hp<=0) return false;
   if(r.age<def.age || commander.cooldown>0) return false;
+  // ABILITY_TARGET_VALIDATED_FIRST: nunca consume enfriamiento con un objetivo inválido.
+  if(side==='blue' && (!Number.isFinite(x)||!Number.isFinite(y))) return false;
   commander.cooldown=def.cooldown; commander.active=def.duration;
   if(side==='blue'){
-    if(!Number.isFinite(x)||!Number.isFinite(y)) return false;
     commander.reveal={x:clamp(x,0,MAP_W),y:clamp(y,0,MAP_H),r:def.radius,t:def.duration};
   }
   G.stats[side].commanderUses++;
@@ -1300,7 +1301,7 @@ function step(dt){
       continue;
     }
     // Unidades
-    // Héroes: regeneración lenta y expiración de buff temporal (trampita)
+    // Héroes: regeneración lenta y compatibilidad con efectos temporales
     if(DEFS[e.kind].hero){
       if(e.hp<e.maxHp) e.hp=Math.min(e.maxHp, e.hp + DEFS[e.kind].regen*dt);
       if(e.buffT>0){ e.buffT-=dt; if(e.buffT<=0){ e.buffT=0; e.atkMul=1; e.spdMul=1; } }
@@ -1487,9 +1488,17 @@ function moveToward(e, tx, ty, dt){
   e.moving = true;
 }
 
+function horizonProjectileDamage(from,tgt,dmg){
+  const reveal=G.commanders?.blue?.reveal;
+  if(from.side==='blue' && reveal && reveal.t>0 && dist(tgt.x,tgt.y,reveal.x,reveal.y)<=reveal.r){
+    // HORIZON_PROJECTILE_BONUS: convierte inteligencia en ventaja táctica real.
+    return dmg*1.18;
+  }
+  return dmg;
+}
 function shoot(from, tgt, dmg, fromBuilding){
   G.projectiles.push({
-    x:from.x, y:from.y, targetId:tgt.id, dmg, side:from.side,
+    x:from.x, y:from.y, targetId:tgt.id, dmg:horizonProjectileDamage(from,tgt,dmg), side:from.side,
     speed: fromBuilding?260:300, kind:from.kind, dead:false
   });
 }
@@ -1568,7 +1577,8 @@ function aiTryCommanderAbility(side,king,army,target){
     if(nearby>=3 && danger) return useCommanderAbility(side,def.id,king.id,king.x,king.y);
     return false;
   }
-  if(target) return useCommanderAbility(side,def.id,king.id,target.x,target.y);
+  const ranged=army.filter((unit)=>unit.kind==='archer').length;
+  if(target && ranged>=2) return useCommanderAbility(side,def.id,king.id,target.x,target.y);
   return false;
 }
 function aiMercenaryMission(side,king,army){
@@ -1814,6 +1824,8 @@ function render(){
 
   // OBJECTIVES_AFTER_FOG: los Bastiones son conocimiento estratégico público.
   ctx.save(); ctx.translate(-cam.x,-cam.y);
+  const ownReveal=S.commanders?.[mySide]?.reveal;
+  if(ownReveal && ownReveal.t>0) drawHorizonReveal(ownReveal);
   for(const objective of (S.objectives||[])) drawObjective(objective);
   for(const camp of (S.mercenaryCamps||[])) drawMercenaryCamp(camp);
   ctx.restore();
@@ -1840,6 +1852,20 @@ function h2(x,y){
   let n = (x|0)*374761393 + (y|0)*668265263;
   n = (n ^ (n>>13)) * 1274126177;
   return ((n ^ (n>>16)) >>> 0) / 4294967296;
+}
+
+function drawHorizonReveal(reveal){
+  // COMMANDER_VISUAL_SIGNAL: la zona activa debe leerse sin abrir el HUD.
+  const pulse=0.65+Math.sin(performance.now()/180)*0.12;
+  ctx.save();
+  ctx.fillStyle='rgba(70,150,255,0.08)'; circle(reveal.x,reveal.y,reveal.r);
+  ctx.strokeStyle=`rgba(100,190,255,${pulse})`; ctx.lineWidth=4;
+  ctx.setLineDash([12,8]);
+  ctx.beginPath(); ctx.arc(reveal.x,reveal.y,reveal.r,0,Math.PI*2); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#bfe4ff'; ctx.font='bold 18px VT323, monospace'; ctx.textAlign='center';
+  ctx.fillText('OJO DEL HORIZONTE',reveal.x,reveal.y-reveal.r-12);
+  ctx.restore();
 }
 
 function drawObjective(objective){
@@ -2079,8 +2105,13 @@ function drawUnit(e,d,selected){
   // aura de héroe
   if(hero){
     if(e.side==='red'){
-      ctx.strokeStyle='rgba(255,80,60,0.18)'; ctx.lineWidth=3;
-      ctx.beginPath(); ctx.arc(x,y,FACTIONS.red.kingAuraRange,0,Math.PI*2); ctx.stroke();
+      const commander=commanderOf('red',renderState());
+      const active=!!commander && commander.active>0;
+      const auraRadius=active?COMMANDER_ABILITIES.red.radius:FACTIONS.red.kingAuraRange;
+      ctx.strokeStyle=active?'rgba(255,80,50,0.82)':'rgba(255,80,60,0.18)'; ctx.lineWidth=active?5:3;
+      if(active) ctx.setLineDash([10,7]);
+      ctx.beginPath(); ctx.arc(x,y,auraRadius,0,Math.PI*2); ctx.stroke();
+      ctx.setLineDash([]);
     }
     const glow=e.buffT>0?0.9:0.45;
     ctx.strokeStyle=`rgba(255,209,74,${glow})`; ctx.lineWidth=e.buffT>0?4:2.5;

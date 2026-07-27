@@ -66,7 +66,7 @@ El mapa incorpora tres Bastiones neutrales. Las unidades militares capturan pres
 
 ## Comandantes y Eventos del Mapa
 
-Los Reyes disponen de habilidades activas desde la Edad de Fortaleza. León activa **Rugido de Guerra** para potenciar temporalmente a las tropas cercanas; Nelson utiliza **Ojo del Horizonte** para revelar una región amplia incluso durante Niebla Negra. Ambas habilidades tienen enfriamiento, se validan en el host y la IA usa las mismas reglas.
+Los Reyes disponen de habilidades activas desde la Edad de Fortaleza. León activa **Rugido de Guerra** para potenciar temporalmente a las tropas cercanas; Nelson utiliza **Ojo del Horizonte** para revelar una región amplia incluso durante Niebla Negra y aumentar 18% el daño de proyectiles contra objetivos dentro de esa zona. Ambas habilidades tienen enfriamiento, se validan en el host y la IA usa las mismas reglas.
 
 Dos campamentos neutrales permiten contratar Guardias Mercenarias. El Rey debe acercarse físicamente, pagar el contrato y disponer de población. Los campamentos tienen su propio enfriamiento y el Mercado de Guerra modifica temporalmente precio y disponibilidad.
 
