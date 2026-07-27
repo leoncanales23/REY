@@ -20,6 +20,8 @@ jobs:
           node-version: 22
       - name: Apply campaign layer
         run: python3 scripts/apply-campana-dos-reyes.py
+      - name: Apply campaign hardening
+        run: python3 scripts/finalize-campana-dos-reyes.py
       - name: Validate generated campaign
         run: |
           node --check rey/game.js
@@ -32,11 +34,11 @@ jobs:
       - name: Commit generated source
         run: |
           if git diff --quiet; then
-            echo "Campaña already applied"
+            echo "Campaña already hardened"
             exit 0
           fi
           git config user.name "reinos-campaign-bot"
           git config user.email "actions@users.noreply.github.com"
           git add rey README.md scripts/validate.mjs
-          git commit -m "feat: add three-act campaign and persistent stars [campaign-generated]"
+          git commit -m "fix: harden campaign retries and mission endings [campaign-final]"
           git push origin HEAD:${{ github.head_ref }}
