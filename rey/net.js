@@ -77,6 +77,8 @@ const Net = {
     const allowedUnits = new Set(['villager', 'swordsman', 'archer', 'knight']);
     const allowedBuildings = new Set(['house', 'barracks', 'tower']);
     const allowedResearch = new Set(['age2', 'age3', 'wheelbarrow', 'masonry', 'forgedBlades', 'fletching', 'cavalry']);
+    const allowedAbilities = new Set(['warCry', 'horizonEye']);
+    const allowedCamps = new Set(['northGuild', 'southGuild']);
 
     switch (input.type) {
       case 'move':
@@ -106,6 +108,12 @@ const Net = {
       case 'research':
         if (!entityId(input.buildingId) || !allowedResearch.has(input.researchId)) return null;
         return { type: 'research', buildingId: input.buildingId, researchId: input.researchId };
+      case 'ability':
+        if (!entityId(input.kingId) || !allowedAbilities.has(input.abilityId) || !worldX(input.x) || !worldY(input.y)) return null;
+        return { type: 'ability', abilityId: input.abilityId, kingId: input.kingId, x: Number(input.x), y: Number(input.y) };
+      case 'hireMercenaries':
+        if (!entityId(input.kingId) || !allowedCamps.has(input.campId)) return null;
+        return { type: 'hireMercenaries', campId: input.campId, kingId: input.kingId };
       case 'rally':
         if (!entityId(input.buildingId) || !worldX(input.x) || !worldY(input.y)) return null;
         return { type: 'rally', buildingId: input.buildingId, x: Number(input.x), y: Number(input.y) };

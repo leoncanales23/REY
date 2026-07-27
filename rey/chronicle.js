@@ -149,6 +149,8 @@
       currentStreak: currentStreak(history),
       bestStreak: calculateBestStreak(history),
       supremacyWins: history.filter((entry) => entry.result === 'victory' && entry.victoryReason === 'supremacy').length,
+      commanderUses: history.reduce((sum, entry) => sum + (entry.commanderUses || 0), 0),
+      mercenaries: history.reduce((sum, entry) => sum + (entry.mercenariesHired || 0), 0),
     };
   }
 
@@ -177,6 +179,8 @@
     appendStat(statsContainer, 'racha actual', stats.currentStreak);
     appendStat(statsContainer, 'mejor racha', stats.bestStreak);
     appendStat(statsContainer, 'supremacías', stats.supremacyWins);
+    appendStat(statsContainer, 'poderes usados', stats.commanderUses);
+    appendStat(statsContainer, 'mercenarios', stats.mercenaries);
     appendStat(statsContainer, 'duración media', formatDuration(stats.averageMs));
 
     list.replaceChildren();
@@ -203,7 +207,7 @@
 
       const details = document.createElement('div');
       details.className = 'chronicle-entry-details';
-      details.textContent = `${sideName(entry.side)} · ${factionName(entry.side)} · ${modeName(entry.mode)} · ${difficultyName(entry.difficulty)} · ${victoryReasonName(entry.victoryReason)} · Edad ${entry.finalAge||1} · ${formatDuration(entry.durationMs)}`;
+      details.textContent = `${sideName(entry.side)} · ${factionName(entry.side)} · ${modeName(entry.mode)} · ${difficultyName(entry.difficulty)} · ${victoryReasonName(entry.victoryReason)} · 👑${entry.commanderUses||0} · ⚔${entry.mercenariesHired||0} · Edad ${entry.finalAge||1} · ${formatDuration(entry.durationMs)}`;
 
       article.append(header, details);
       list.appendChild(article);
@@ -225,6 +229,9 @@
     appendStat(grid, 'edad final', entry.finalAge||1);
     appendStat(grid, 'victoria por', victoryReasonName(entry.victoryReason));
     appendStat(grid, 'bastiones', entry.finalObjectives||0);
+    appendStat(grid, 'poderes', entry.commanderUses||0);
+    appendStat(grid, 'mercenarios', entry.mercenariesHired||0);
+    appendStat(grid, 'eventos', entry.worldEvents||0);
     appendStat(grid, 'racha', entry.result === 'victory' ? streak : 0);
     summary.appendChild(grid);
   }
@@ -246,6 +253,10 @@
       victoryReason: meta.victoryReason || 'castle',
       finalObjectives: meta.objectives || 0,
       finalDominance: meta.dominance || 0,
+      commanderUses: meta.commanderUses || 0,
+      mercenariesHired: meta.mercenariesHired || 0,
+      worldEvents: meta.worldEvents || 0,
+      lastWorldEvent: meta.lastWorldEvent || null,
       finishedAt: Date.now(),
       durationMs: Math.max(1000, Date.now() - activeBattle.startedAt),
       result: titleText.includes('VICTORIA') ? 'victory' : 'defeat',

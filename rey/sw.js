@@ -1,4 +1,4 @@
-const CACHE_NAME = 'reinos-asimetricos-v4';
+const CACHE_NAME = 'reinos-comandantes-v5';
 const APP_SHELL = [
   './', './index.html', './style.css', './chronicle.css', './net.js', './game.js', './app.js', './chronicle.js',
   './manifest.webmanifest', './icons/reinos-192.png', './icons/reinos-512.png',

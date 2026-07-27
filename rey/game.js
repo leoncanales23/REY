@@ -14,7 +14,7 @@ const MAP_W = 2600, MAP_H = 1700;
 const SIM_DT = 1 / 20;          // paso de simulación (20 Hz)
 const SNAP_INT = 0.1;           // cada cuánto el host manda snapshot (10 Hz)
 
-const KINDS = ['castle','house','barracks','tower','villager','swordsman','archer','knight','king'];
+const KINDS = ['castle','house','barracks','tower','villager','swordsman','archer','knight','mercenary','king'];
 
 const DEFS = {
   castle:   {building:true, hp:2200, r:36, range:185, atk:20, cd:1.1, sight:260, name:'Castillo'},
@@ -25,6 +25,7 @@ const DEFS = {
   swordsman:{hp:130, r:12, speed:56, atk:14, cd:1.1, range:18, sight:160, name:'Espadachín'},
   archer:   {hp:58,  r:10, speed:60, atk:12, cd:1.3, range:128,sight:185, name:'Arquero', ranged:true},
   knight:   {hp:190, r:14, speed:94, atk:19, cd:1.15,range:20, sight:170, name:'Caballero'},
+  mercenary:{hp:155, r:12, speed:66, atk:17, cd:1.05,range:19, sight:175, name:'Guardia Mercenaria'},
   // Héroe: fuerte pero mortal. Un ejército enfocado igual lo derriba (sin masacres).
   king:     {hp:460, r:17, speed:80, atk:28, cd:1.0, range:22, sight:210, name:'Rey', hero:true, regen:5},
 };
@@ -99,6 +100,34 @@ const OBJECTIVE_DEFS = [
   {id:'south', name:'BASTIÓN SUR', x:MAP_W/2, y:MAP_H-400},
 ];
 
+
+const COMMANDER_ABILITIES = {
+  red: {
+    id:'warCry', name:'RUGIDO DE GUERRA', age:2, cooldown:70, duration:12, radius:220,
+    attack:1.25, speed:1.20,
+    note:'+25% daño y +20% velocidad cerca del Rey León',
+  },
+  blue: {
+    id:'horizonEye', name:'OJO DEL HORIZONTE', age:2, cooldown:65, duration:14, radius:340,
+    note:'revela una gran zona al centro de la cámara',
+  },
+};
+
+const MERCENARY_CAMP_DEFS = [
+  {id:'northGuild', name:'HERMANDAD DEL NORTE', x:MAP_W/2-300, y:MAP_H/2-190},
+  {id:'southGuild', name:'COMPAÑÍA DEL SUR', x:MAP_W/2+300, y:MAP_H/2+190},
+];
+const MERCENARY_CAMP_RADIUS = 150;
+const MERCENARY_CONTRACT = {g:180, w:90, units:2, cooldown:85, age:2};
+
+const WORLD_EVENT_DEFS = {
+  abundance: {name:'TIEMPO DE ABUNDANCIA', duration:38, note:'+25% velocidad de recolección'},
+  warMarket: {name:'MERCADO DE GUERRA', duration:34, note:'contratos mercenarios -35% y campamentos acelerados'},
+  blackFog: {name:'NIEBLA NEGRA', duration:30, note:'visión global reducida; Ojo del Horizonte atraviesa la oscuridad'},
+};
+const WORLD_EVENT_IDS = Object.keys(WORLD_EVENT_DEFS);
+const WORLD_EVENT_WARNING = 12;
+
 const COLOR = {
   red:  {main:'#ff3b3b', dark:'#7a1414', light:'#ff8a8a', name:'LEÓN'},
   blue: {main:'#3b8bff', dark:'#143a7a', light:'#8ac0ff', name:'NELSON'},
@@ -122,6 +151,16 @@ function freshState() {
     ents: [], nodes: [], projectiles: [],
     objectives: OBJECTIVE_DEFS.map((objective)=>({...objective, owner:null, control:0})),
     dominance: {red:0, blue:0}, victoryReason:null,
+    commanders: {
+      red:{cooldown:0, active:0, reveal:null},
+      blue:{cooldown:0, active:0, reveal:null},
+    },
+    mercenaryCamps: MERCENARY_CAMP_DEFS.map((camp)=>({...camp,cooldown:0,lastSide:null})),
+    worldEvent:{id:null,t:0,nextAt:65,warning:null,warningT:0,serial:0,announcement:'',seen:0,lastId:null},
+    stats:{
+      red:{commanderUses:0,mercenariesHired:0},
+      blue:{commanderUses:0,mercenariesHired:0},
+    },
     particles: [],   // sistema de partículas
   };
 }
@@ -141,6 +180,28 @@ function ageOf(side){ const r=sideState(side); return r && r.age ? r.age : 1; }
 function canTrainUnit(side,unit){ return ageOf(side) >= (UNIT_AGE[unit] || 1); }
 function canBuildKind(side,kind){ return ageOf(side) >= (BUILDING_AGE[kind] || 1); }
 function factionOf(side){ return FACTIONS[side] || FACTIONS.red; }
+function worldEventActive(id,state=activeState()){ return !!(state?.worldEvent?.id===id && state.worldEvent.t>0); }
+function commanderOf(side,state=activeState()){ return state?.commanders?.[side] || null; }
+function commanderAbilityActive(e){
+  if(e.side!=='red' || e.building || e.kind==='villager' || e.kind==='king') return false;
+  const state=activeState(), commander=commanderOf(e.side,state), def=COMMANDER_ABILITIES.red;
+  if(!state || !commander || commander.active<=0) return false;
+  const king=state.ents.find((unit)=>unit.side===e.side && unit.kind==='king' && unit.hp>0);
+  return !!king && dist(e.x,e.y,king.x,king.y)<=def.radius;
+}
+function campById(id,state=activeState()){ return (state?.mercenaryCamps||[]).find((camp)=>camp.id===id) || null; }
+function nearestCampForKing(state,king){
+  let best=null, bestDistance=Infinity;
+  for(const camp of (state?.mercenaryCamps||[])){
+    const distance=dist(king.x,king.y,camp.x,camp.y);
+    if(distance<bestDistance){ bestDistance=distance; best=camp; }
+  }
+  return best?{camp:best,distance:bestDistance}:null;
+}
+function mercenaryPrice(state=activeState()){
+  const multiplier=worldEventActive('warMarket',state)?0.65:1;
+  return {g:Math.round(MERCENARY_CONTRACT.g*multiplier),w:Math.round(MERCENARY_CONTRACT.w*multiplier)};
+}
 function objectiveCount(state,side){ return (state?.objectives||[]).filter((objective)=>objective.owner===side).length; }
 function kingAuraActive(e){
   if(e.side!=='red' || e.building || e.kind==='villager' || e.kind==='king') return false;
@@ -151,6 +212,7 @@ function kingAuraActive(e){
 function sightFor(e){
   let value=DEFS[e.kind].sight || 80;
   if(e.side==='blue') value*=factionOf(e.side).sight;
+  if(worldEventActive('blackFog')) value*=0.68;
   return value;
 }
 
@@ -166,6 +228,7 @@ function attackFor(e){
   if(hasTech(e.side,'fletching') && ['archer','tower'].includes(e.kind)) value*=1.12;
   if(e.side==='red' && ['swordsman','knight','king'].includes(e.kind)) value*=factionOf(e.side).meleeAttack;
   if(kingAuraActive(e)) value*=factionOf(e.side).kingAuraAttack;
+  if(commanderAbilityActive(e)) value*=COMMANDER_ABILITIES.red.attack;
   if(isAiSide(e.side)) value*=aiProfile().combat;
   return value;
 }
@@ -179,12 +242,14 @@ function speedFor(e){
   let value=DEFS[e.kind].speed || 0;
   if(e.kind==='knight' && hasTech(e.side,'cavalry')) value*=1.18;
   if(kingAuraActive(e)) value*=factionOf(e.side).kingAuraSpeed;
+  if(commanderAbilityActive(e)) value*=COMMANDER_ABILITIES.red.speed;
   return value;
 }
 function gatherRateFor(e){
   let value=DEFS[e.kind].gather || 0;
   if(hasTech(e.side,'wheelbarrow')) value*=1.25;
   if(e.side==='blue' && e.kind==='villager') value*=factionOf(e.side).villagerGather;
+  if(worldEventActive('abundance')) value*=1.25;
   if(isAiSide(e.side)) value*=aiProfile().gather;
   return value;
 }
@@ -265,7 +330,7 @@ function addNode(type, x, y, amount) {
 // ---------- Inicialización de partida ----------
 function initMap() {
   G = freshState();
-  AI.t=0; AI.lastBuild=0;
+  AI.t=0; AI.lastBuild=0; AI.lastMercenary=-120; AI.mercenaryCampId=null;
   if(mode==='sp'){
     const profile=aiProfile();
     G.res[enemySide].g+=profile.startBonus;
@@ -383,6 +448,43 @@ function ownsAll(side, ids){
   return true;
 }
 
+function spawnNearPoint(side,kind,x,y,count){
+  const spawned=[];
+  for(let i=0;i<count;i++){
+    const angle=(Math.PI*2*i/Math.max(1,count))+Math.random()*.35;
+    const radius=28+Math.random()*20;
+    spawned.push(spawn(side,kind,clamp(x+Math.cos(angle)*radius,14,MAP_W-14),clamp(y+Math.sin(angle)*radius,14,MAP_H-14)));
+  }
+  return spawned;
+}
+function useCommanderAbility(side,abilityId,kingId,x,y){
+  const def=COMMANDER_ABILITIES[side], commander=commanderOf(side), king=entById(kingId), r=G.res[side];
+  if(!def || def.id!==abilityId || !commander || !king || king.side!==side || king.kind!=='king' || king.hp<=0) return false;
+  if(r.age<def.age || commander.cooldown>0) return false;
+  commander.cooldown=def.cooldown; commander.active=def.duration;
+  if(side==='blue'){
+    if(!Number.isFinite(x)||!Number.isFinite(y)) return false;
+    commander.reveal={x:clamp(x,0,MAP_W),y:clamp(y,0,MAP_H),r:def.radius,t:def.duration};
+  }
+  G.stats[side].commanderUses++;
+  toast(side==='red'?'🦁 ¡RUGIDO DE GUERRA! Las tropas cercanas avanzan enfurecidas.':'🧭 OJO DEL HORIZONTE: la niebla se abre sobre el campo elegido.');
+  return true;
+}
+function hireMercenaries(side,campId,kingId){
+  const camp=campById(campId), king=entById(kingId), r=G.res[side], price=mercenaryPrice(G);
+  if(!camp || !king || king.side!==side || king.kind!=='king' || king.hp<=0) return false;
+  if(r.age<MERCENARY_CONTRACT.age || camp.cooldown>0 || dist(king.x,king.y,camp.x,camp.y)>MERCENARY_CAMP_RADIUS) return false;
+  if(r.g<price.g || r.w<price.w || r.pop+MERCENARY_CONTRACT.units>r.cap) return false;
+  r.g-=price.g; r.w-=price.w;
+  const troops=spawnNearPoint(side,'mercenary',camp.x,camp.y,MERCENARY_CONTRACT.units);
+  for(const troop of troops){ troop.order={type:'move'}; troop.tx=king.x; troop.ty=king.y; troop.moving=true; }
+  camp.cooldown=MERCENARY_CONTRACT.cooldown; camp.lastSide=side;
+  G.stats[side].mercenariesHired+=MERCENARY_CONTRACT.units;
+  recalcPop();
+  toast('⚔ '+COLOR[side].name+' firmó con '+camp.name+' · '+MERCENARY_CONTRACT.units+' guardias se unen');
+  return true;
+}
+
 function applyCommand(cmd, side){
   if(G.winner) return;
   switch(cmd.type){
@@ -432,6 +534,12 @@ function applyCommand(cmd, side){
       const b=entById(cmd.buildingId);
       startResearch(side,cmd.researchId,b);
       break; }
+    case 'ability': {
+      useCommanderAbility(side,cmd.abilityId,cmd.kingId,cmd.x,cmd.y);
+      break; }
+    case 'hireMercenaries': {
+      hireMercenaries(side,cmd.campId,cmd.kingId);
+      break; }
     case 'rally': {
       const b=entById(cmd.buildingId);
       if(b&&b.side===side&&b.building){ b.rallyX=cmd.x; b.rallyY=cmd.y; }
@@ -452,6 +560,7 @@ function validPlacement(x,y,r){
   for(const e of state.ents){ if(e.building && dist(x,y,e.x,e.y) < r+DEFS[e.kind].r+6) return false; }
   for(const n of state.nodes){ if(dist(x,y,n.x,n.y) < r+n.r+6) return false; }
   for(const objective of (state.objectives||[])){ if(dist(x,y,objective.x,objective.y) < r+OBJECTIVE_RADIUS+8) return false; }
+  for(const camp of (state.mercenaryCamps||[])){ if(dist(x,y,camp.x,camp.y) < r+58) return false; }
   return true;
 }
 
@@ -993,6 +1102,17 @@ const FOG = {
         }
       }
     }
+    const reveal=state.commanders?.[side]?.reveal;
+    if(reveal && reveal.t>0){
+      const cx=Math.floor(reveal.x/this.CELL), cy=Math.floor(reveal.y/this.CELL);
+      const cr=Math.ceil(reveal.r/this.CELL), r2=(reveal.r/this.CELL)**2;
+      for(let dy=-cr;dy<=cr;dy++) for(let dx=-cr;dx<=cr;dx++){
+        if(dx*dx+dy*dy>r2) continue;
+        const nx=cx+dx, ny=cy+dy;
+        if(nx<0||nx>=this.COLS||ny<0||ny>=this.ROWS) continue;
+        const i=ny*this.COLS+nx; this.vis[i]=2; this.exp[i]=1;
+      }
+    }
   },
 
   // Retorna 0/1/2 para una posición mundo
@@ -1084,11 +1204,60 @@ function aiObjectiveTarget(side){
   return candidates[0] || null;
 }
 
+function setWorldAnnouncement(text){
+  G.worldEvent.announcement=text; G.worldEvent.serial++;
+  toast(text);
+}
+function chooseWorldEvent(){
+  const choices=WORLD_EVENT_IDS.filter((id)=>id!==G.worldEvent.lastId);
+  return choices[Math.floor(Math.random()*choices.length)] || WORLD_EVENT_IDS[0];
+}
+function stepWorldEvents(dt){
+  const world=G.worldEvent;
+  if(world.id){
+    world.t-=dt;
+    if(world.t<=0){
+      const ended=WORLD_EVENT_DEFS[world.id];
+      world.lastId=world.id; world.id=null; world.t=0; world.nextAt=G.time+75+Math.random()*45;
+      setWorldAnnouncement('☀ '+ended.name+' terminó. El mundo recupera el equilibrio.');
+    }
+    return;
+  }
+  if(world.warning){
+    world.warningT-=dt;
+    if(world.warningT<=0){
+      world.id=world.warning; world.warning=null; world.t=WORLD_EVENT_DEFS[world.id].duration; world.seen++;
+      if(world.id==='warMarket') for(const camp of G.mercenaryCamps) camp.cooldown=Math.min(camp.cooldown,18);
+      setWorldAnnouncement('🌍 '+WORLD_EVENT_DEFS[world.id].name+' ACTIVO · '+WORLD_EVENT_DEFS[world.id].note);
+    }
+    return;
+  }
+  if(G.time>=world.nextAt){
+    world.warning=chooseWorldEvent(); world.warningT=WORLD_EVENT_WARNING;
+    setWorldAnnouncement('⚠ '+WORLD_EVENT_DEFS[world.warning].name+' llegará en '+WORLD_EVENT_WARNING+'s');
+  }
+}
+function stepCommanderStates(dt){
+  for(const side of ['red','blue']){
+    const commander=G.commanders[side];
+    commander.cooldown=Math.max(0,commander.cooldown-dt);
+    commander.active=Math.max(0,commander.active-dt);
+    if(commander.reveal){ commander.reveal.t-=dt; if(commander.reveal.t<=0) commander.reveal=null; }
+  }
+}
+function stepMercenaryCamps(dt){
+  const speed=worldEventActive('warMarket',G)?2.5:1;
+  for(const camp of G.mercenaryCamps) camp.cooldown=Math.max(0,camp.cooldown-dt*speed);
+}
+
 // ---------- Simulación ----------
 function step(dt){
   if(G.winner) return;
   G.time += dt; G.tick++;
   stepResearch(dt);
+  stepWorldEvents(dt);
+  stepCommanderStates(dt);
+  stepMercenaryCamps(dt);
   stepObjectives(dt);
   if(G.winner) return;
 
@@ -1368,7 +1537,7 @@ function separate(){
 }
 
 // ---------- IA (enemigo en single player) ----------
-const AI = { t:0, lastBuild:0 };
+const AI = { t:0, lastBuild:0, lastMercenary:-120, mercenaryCampId:null };
 function aiTryResearch(side,castle,barracks,profile){
   const r=sideState(side); if(!r) return null;
   if(r.research) return 'active';
@@ -1390,6 +1559,39 @@ function aiTryResearch(side,castle,barracks,profile){
   }
   return null;
 }
+function aiTryCommanderAbility(side,king,army,target){
+  const def=COMMANDER_ABILITIES[side], commander=commanderOf(side,G);
+  if(!def || !king || G.res[side].age<def.age || !commander || commander.cooldown>0) return false;
+  if(side==='red'){
+    const nearby=army.filter((unit)=>dist(unit.x,unit.y,king.x,king.y)<=def.radius).length;
+    const danger=nearestEnemy(side,king.x,king.y,270);
+    if(nearby>=3 && danger) return useCommanderAbility(side,def.id,king.id,king.x,king.y);
+    return false;
+  }
+  if(target) return useCommanderAbility(side,def.id,king.id,target.x,target.y);
+  return false;
+}
+function aiMercenaryMission(side,king,army){
+  if(!king || G.res[side].age<MERCENARY_CONTRACT.age) return false;
+  const price=mercenaryPrice(G), r=G.res[side];
+  if(AI.mercenaryCampId){
+    const camp=campById(AI.mercenaryCampId,G);
+    if(!camp || camp.cooldown>0){ AI.mercenaryCampId=null; return false; }
+    if(dist(king.x,king.y,camp.x,camp.y)<=MERCENARY_CAMP_RADIUS){
+      if(hireMercenaries(side,camp.id,king.id)){ AI.lastMercenary=AI.t; AI.mercenaryCampId=null; }
+      return true;
+    }
+    king.order={type:'move'}; king.tx=camp.x; king.ty=camp.y; king.moving=true;
+    for(const escort of army.slice(0,2)){ escort.order={type:'move'}; escort.tx=camp.x; escort.ty=camp.y; escort.moving=true; }
+    return true;
+  }
+  if(AI.t-AI.lastMercenary<105 || r.g<price.g || r.w<price.w || r.pop+MERCENARY_CONTRACT.units>r.cap) return false;
+  const ready=G.mercenaryCamps.filter((camp)=>camp.cooldown<=0).sort((a,b)=>dist2(king.x,king.y,a.x,a.y)-dist2(king.x,king.y,b.x,b.y));
+  if(!ready.length) return false;
+  AI.mercenaryCampId=ready[0].id;
+  return true;
+}
+
 function aiStep(dt){
   AI.t += dt;
   const side=enemySide, r=G.res[side], profile=aiProfile();
@@ -1399,6 +1601,7 @@ function aiStep(dt){
   const castle = mine.find(e=>e.kind==='castle'&&e.constructed);
   if(!castle) return;
   const vills = mine.filter(e=>e.kind==='villager');
+  const king = mine.find(e=>e.kind==='king'&&e.hp>0);
   const army  = mine.filter(e=>!e.building && e.kind!=='villager' && e.kind!=='king');
   const barracks = mine.filter(e=>e.kind==='barracks'&&e.constructed);
   const towers = mine.filter(e=>e.kind==='tower');
@@ -1412,6 +1615,7 @@ function aiStep(dt){
 
   const researchPlan=aiTryResearch(side,castle,barracks,profile);
   const savingForAge=researchPlan==='save-age';
+  const mercenaryMission=!savingForAge && aiMercenaryMission(side,king,army);
 
   if(!savingForAge && vills.length<profile.villagers && castle.queue.length<profile.queueDepth && canAfford(side,'villager',1)){
     applyCommand({type:'train', buildingId:castle.id, unit:'villager'}, side);
@@ -1446,8 +1650,10 @@ function aiStep(dt){
   // AI_HOLD_SUPREMACY: no abandona los Bastiones mientras corre el contador.
   const holdingSupremacy=ownedObjectives>=2 && G.dominance[side]>0;
   const objectiveTarget=ownedObjectives<2?aiObjectiveTarget(side):null;
-  const attackTarget=holdingSupremacy?null:(objectiveTarget || enemyCastle);
+  const attackTarget=(holdingSupremacy||mercenaryMission)?null:(objectiveTarget || enemyCastle);
   const requiredArmy=objectiveTarget?Math.max(3,threshold-1):threshold;
+  // AI_COMMANDER_USAGE: la CPU usa la misma autoridad y enfriamientos que el jugador.
+  aiTryCommanderAbility(side,king,army,attackTarget || objectiveTarget || enemyCastle);
   if(attackTarget && army.length>=requiredArmy){
     const free = army.filter(u=>!u.order || u.order.type==='move' || (u.order.type==='attackmove'&&!entById(u.targetId)));
     for(const u of free){ u.order={type:'attackmove', x:attackTarget.x, y:attackTarget.y}; u.tx=attackTarget.x; u.ty=attackTarget.y; u.moving=true; }
@@ -1481,6 +1687,7 @@ let mouse = {x:-1, y:-1, wx:0, wy:0, down:false, active:false};
 
 // snapshot de cliente (interpolación)
 let snapPrev=null, snapCur=null, snapPrevT=0, snapCurT=0;
+let lastWorldAnnouncementSerial=0;
 
 function resize(){
   if(!canvas) return;
@@ -1608,6 +1815,7 @@ function render(){
   // OBJECTIVES_AFTER_FOG: los Bastiones son conocimiento estratégico público.
   ctx.save(); ctx.translate(-cam.x,-cam.y);
   for(const objective of (S.objectives||[])) drawObjective(objective);
+  for(const camp of (S.mercenaryCamps||[])) drawMercenaryCamp(camp);
   ctx.restore();
 
   drawFlowFieldDebug();
@@ -1655,6 +1863,20 @@ function drawObjective(objective){
   ctx.fillText(objective.owner?FACTIONS[objective.owner].short:'⚑',objective.x,objective.y+1);
   ctx.fillStyle='#ffe9a8'; ctx.font='15px VT323, monospace';
   ctx.fillText(objective.name,objective.x,objective.y+OBJECTIVE_RADIUS*.98);
+  ctx.restore();
+}
+
+function drawMercenaryCamp(camp){
+  ctx.save();
+  const ready=camp.cooldown<=0;
+  ctx.fillStyle='rgba(20,13,8,.9)'; ctx.fillRect(camp.x-42,camp.y-28,84,56);
+  ctx.strokeStyle=ready?'#f0c46a':'#6f5b3f'; ctx.lineWidth=3; ctx.strokeRect(camp.x-42,camp.y-28,84,56);
+  ctx.fillStyle='#8b2f2f';
+  ctx.beginPath(); ctx.moveTo(camp.x-48,camp.y-28); ctx.lineTo(camp.x,camp.y-68); ctx.lineTo(camp.x+48,camp.y-28); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#f4e4bd'; ctx.font='bold 18px VT323, monospace'; ctx.textAlign='center';
+  ctx.fillText('⚔',camp.x,camp.y+7);
+  ctx.font='15px VT323, monospace'; ctx.fillStyle=ready?'#ffe9a8':'#9d8c70';
+  ctx.fillText(ready?camp.name:`${camp.name} · ${Math.ceil(camp.cooldown)}s`,camp.x,camp.y+47);
   ctx.restore();
 }
 
@@ -1876,7 +2098,7 @@ function drawUnit(e,d,selected){
     ctx.beginPath(); ctx.arc(x+dir*r*0.7, y, r*0.7, -1.1, 1.1); ctx.stroke();
     ctx.strokeStyle='#eee'; ctx.lineWidth=1;
     ctx.beginPath(); ctx.moveTo(x+dir*r*0.7, y-r*0.6); ctx.lineTo(x+dir*r*0.7, y+r*0.6); ctx.stroke();
-  } else if(e.kind==='swordsman' || (hero)){
+  } else if(e.kind==='swordsman' || e.kind==='mercenary' || (hero)){
     // espada
     ctx.strokeStyle='#dfe4ea'; ctx.lineWidth=hero?3:2;
     ctx.beginPath(); ctx.moveTo(x+dir*r*0.55, y+r*0.3); ctx.lineTo(x+dir*r*0.9, y-r*0.9); ctx.stroke();
@@ -1984,6 +2206,7 @@ function drawMinimap(S){
   ctx.fillStyle='#3a5526'; ctx.fillRect(x0,y0,mw,mh);
   for(const n of S.nodes){ ctx.fillStyle=n.type==='gold'?'#caa12e':'#3f8a43'; ctx.fillRect(x0+n.x*sx-1,y0+n.y*sy-1,2,2); }
   for(const objective of (S.objectives||[])){ ctx.fillStyle=objective.owner?COLOR[objective.owner].main:'#ffe9a8'; ctx.fillRect(x0+objective.x*sx-2,y0+objective.y*sy-2,4,4); }
+  for(const camp of (S.mercenaryCamps||[])){ ctx.fillStyle=camp.cooldown<=0?'#f0c46a':'#6f5b3f'; ctx.fillRect(x0+camp.x*sx-2,y0+camp.y*sy-2,4,4); }
   for(const e of S.ents){ ctx.fillStyle=COLOR[e.side].main; const s=e.building?3:2; ctx.fillRect(x0+e.x*sx-s/2,y0+e.y*sy-s/2,s,s); }
   // viewport
   ctx.strokeStyle='#fff'; ctx.lineWidth=1;
@@ -2035,11 +2258,7 @@ function drawFlowFieldDebug() {
 // ---------- Input ----------
 const keys={};
 
-// ---------- Trampita del Rey León ----------
-// Código secreto que SOLO ayuda a León. Modesto y con enfriamiento: mantiene el juego.
-const CHEAT_CODE='vibra';
-let cheatBuf='';
-let cheatReadyAt=0;
+// ---------- Poderes oficiales de los comandantes ----------
 function toast(msg){
   const t=document.createElement('div');
   t.textContent=msg;
@@ -2051,28 +2270,9 @@ function toast(msg){
   setTimeout(()=>{ t.style.opacity='0'; }, 2300);
   setTimeout(()=>{ t.remove(); }, 2900);
 }
-function tryCheat(){
-  cheatBuf='';
-  if(mode!=='sp' || mySide!=='red' || !G || !running || G.winner) return;
-  const now=performance.now();
-  if(now<cheatReadyAt){ toast(`⏳ Trampita en enfriamiento — ${Math.ceil((cheatReadyAt-now)/1000)}s`); return; }
-  const king=G.ents.find(x=>x.side==='red'&&x.kind==='king'&&x.hp>0);
-  if(!king){ toast('☠️ El Rey León cayó… nadie a quién envalentonar'); return; }
-  king.hp=king.maxHp;
-  king.atkMul=1.6; king.spdMul=1.35; king.buffT=8;
-  G.res.red.g+=150; G.res.red.w+=150;
-  cheatReadyAt=now+45000;
-  SFX.play('cheat');
-  toast('⚡ ¡RUGIDO DEL REY LEÓN!  +150🪙 +150🪵 · Rey curado y enfurecido (8s)');
-}
 
 window.addEventListener('keydown', e=>{
-  // registrar código secreto (no en cajas de texto)
   const inField = e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA');
-  if(!inField && e.key && e.key.length===1){
-    cheatBuf=(cheatBuf + e.key.toLowerCase()).slice(-12);
-    if(cheatBuf.endsWith(CHEAT_CODE)) tryCheat();
-  }
   keys[e.key.toLowerCase()]=true;
   if(e.key==='Escape'){ buildKind=null; }
   if(e.key.toLowerCase()==='f' && !inField){ showFlowField=!showFlowField; }
@@ -2392,6 +2592,12 @@ function updateHUD(){
   const dominance=Math.floor(S.dominance?.[mySide]||0);
   const remaining=Math.max(0,Math.ceil(DOMINANCE_SECONDS-dominance));
   setText('objectiveInfo', `BASTIONES ${owned}/3 · RIVAL ${enemyOwned}/3 · ${owned>=2?'SUPREMACÍA '+remaining+'s':'SUPREMACÍA INACTIVA'}`);
+  const world=S.worldEvent||{};
+  let worldText='MUNDO ESTABLE';
+  if(world.warning) worldText=`⚠ ${WORLD_EVENT_DEFS[world.warning].name} EN ${Math.max(0,Math.ceil(world.warningT))}s`;
+  else if(world.id) worldText=`🌍 ${WORLD_EVENT_DEFS[world.id].name} ${Math.max(0,Math.ceil(world.t))}s · ${WORLD_EVENT_DEFS[world.id].note}`;
+  else worldText=`MUNDO ESTABLE · próximo evento ${Math.max(0,Math.ceil((world.nextAt||0)-(S.time||0)))}s`;
+  setText('eventInfo',worldText);
   const ageName=AGE_DEFS[r.age||1].name;
   const researchText=r.research?` · ⚙ ${RESEARCH[r.research.id].name} ${Math.max(0,Math.ceil(r.research.t))}s`:'';
   setText('ageInfo', ageName+researchText);
@@ -2415,9 +2621,10 @@ function refreshPanel(){
   document.getElementById('selInfo').textContent =
     Object.entries(counts).map(([k,v])=> k==='king' ? `👑 Rey ${COLOR[mySide].name} · ${FACTIONS[mySide].name}` : `${v}× ${DEFS[k].name}`).join('  ·  ');
 
-  // un solo edificio de producción
+  // un solo comandante o edificio de producción
   if(ids.length===1){
     const e=entById2(S,ids[0]);
+    if(e && e.kind==='king'){ addCommanderButtons(panel,e); return; }
     if(e && e.building && e.constructed){
       if(e.kind==='castle'){
         addTrainBtn(panel,e,'villager','Aldeano','H');
@@ -2450,6 +2657,32 @@ function btn(label, sub){
   b.innerHTML=`<span>${label}</span>${sub?`<small>${sub}</small>`:''}`;
   return b;
 }
+function addCommanderButtons(panel,king){
+  const S=renderState(), r=S.res[mySide], def=COMMANDER_ABILITIES[mySide], commander=S.commanders?.[mySide]||{};
+  const ageLocked=(r.age||1)<def.age, cooldown=Math.ceil(commander.cooldown||0), active=Math.ceil(commander.active||0);
+  const abilityLabel=active>0?`⚡ ${def.name} ACTIVO`:def.name;
+  const abilitySub=ageLocked?'requiere EDAD DE FORTALEZA':cooldown>0?`enfriamiento ${cooldown}s`:def.note;
+  const abilityBtn=btn(ageLocked?'🔒 '+def.name:abilityLabel,abilitySub);
+  abilityBtn.classList.add('commander'); abilityBtn.disabled=ageLocked||cooldown>0;
+  abilityBtn.onclick=()=>issue({type:'ability',abilityId:def.id,kingId:king.id,x:cam.x+view.w/2,y:cam.y+view.h/2});
+  panel.appendChild(abilityBtn);
+
+  const nearest=nearestCampForKing(S,king), camp=nearest?.camp, price=mercenaryPrice(S);
+  const near=!!camp && nearest.distance<=MERCENARY_CAMP_RADIUS;
+  const campCooldown=Math.ceil(camp?.cooldown||0);
+  const popBlocked=r.pop+MERCENARY_CONTRACT.units>r.cap;
+  let contractSub=`acerca al Rey a un campamento · 🪙${price.g} 🪵${price.w}`;
+  if(ageLocked) contractSub='requiere EDAD DE FORTALEZA';
+  else if(near && campCooldown>0) contractSub=`${camp.name} disponible en ${campCooldown}s`;
+  else if(near) contractSub=`${camp.name} · +${MERCENARY_CONTRACT.units} guardias · 🪙${price.g} 🪵${price.w}`;
+  else if(popBlocked) contractSub='población insuficiente';
+  const contractBtn=btn(ageLocked?'🔒 CONTRATO MERCENARIO':'CONTRATO MERCENARIO',contractSub);
+  contractBtn.classList.add('mercenary');
+  contractBtn.disabled=ageLocked||!near||campCooldown>0||popBlocked||r.g<price.g||r.w<price.w;
+  contractBtn.onclick=()=>issue({type:'hireMercenaries',campId:camp.id,kingId:king.id});
+  panel.appendChild(contractBtn);
+}
+
 function addTrainBtn(panel,e,unit,label,hk){
   const c=COST[unit], S=renderState(), r=S.res[mySide], required=UNIT_AGE[unit]||1;
   const locked=(r.age||1)<required;
@@ -2501,6 +2734,10 @@ function serialize(){
     nodes: G.nodes.map(n=>({id:n.id,type:n.type,x:Math.round(n.x),y:Math.round(n.y),amount:Math.round(n.amount),r:n.r})),
     objectives: G.objectives.map((objective)=>({...objective, control:Math.round(objective.control)})),
     dominance:{...G.dominance}, victoryReason:G.victoryReason,
+    commanders:{red:{...G.commanders.red,reveal:G.commanders.red.reveal?{...G.commanders.red.reveal}:null},blue:{...G.commanders.blue,reveal:G.commanders.blue.reveal?{...G.commanders.blue.reveal}:null}},
+    mercenaryCamps:G.mercenaryCamps.map((camp)=>({...camp,cooldown:Math.round(camp.cooldown)})),
+    worldEvent:{...G.worldEvent,t:Math.round(G.worldEvent.t),warningT:Math.round(G.worldEvent.warningT)},
+    stats:{red:{...G.stats.red},blue:{...G.stats.blue}},
     ents: G.ents.map(e=>({
       id:e.id, side:e.side, kind:e.kind,
       x:Math.round(e.x), y:Math.round(e.y),
@@ -2516,12 +2753,17 @@ function serialize(){
 function onSnapshot(s){
   snapPrev=snapCur; snapPrevT=snapCurT;
   snapCur=s; snapCurT=performance.now()/1000;
+  // CLIENT_WORLD_ANNOUNCEMENT: el invitado recibe los avisos creados por el host.
+  if((s.worldEvent?.serial||0)>lastWorldAnnouncementSerial && s.worldEvent?.announcement){
+    lastWorldAnnouncementSerial=s.worldEvent.serial; toast(s.worldEvent.announcement);
+  }
   if(s.winner) showEnd(s.winner);
 }
 
 // ---------- Arranque / menús ----------
 function startGame(opts){
   mode=opts.mode; mySide=opts.side; enemySide = mySide==='red'?'blue':'red';
+  lastWorldAnnouncementSerial=0;
   aiDifficulty=AI_PROFILES[opts.difficulty]?opts.difficulty:'warrior';
   SFX.init(); SFX.resume();
   resize();
@@ -2584,6 +2826,8 @@ window.REINOS = {
       mode, side:mySide, difficulty:mode==='sp'?aiDifficulty:'human', age:S?.res?.[mySide]?.age||1,
       faction:FACTIONS[mySide].name, victoryReason:S?.victoryReason||'castle',
       objectives:objectiveCount(S,mySide), dominance:Math.floor(S?.dominance?.[mySide]||0),
+      commanderUses:S?.stats?.[mySide]?.commanderUses||0, mercenariesHired:S?.stats?.[mySide]?.mercenariesHired||0,
+      worldEvents:S?.worldEvent?.seen||0, lastWorldEvent:S?.worldEvent?.lastId||S?.worldEvent?.id||null,
     };
   },
 

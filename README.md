@@ -62,3 +62,12 @@ Desbloqueos principales:
 León y Nelson ya no son variaciones cosméticas. La **Legión del Rugido** obtiene presión cuerpo a cuerpo, mayor poder de captura y un aura ofensiva alrededor del Rey León. La **Orden del Horizonte** obtiene más alcance para arqueros y torres, visión ampliada y aldeanos más eficientes.
 
 El mapa incorpora tres Bastiones neutrales. Las unidades militares capturan presencia dentro de su radio; cada Bastión controlado entrega un ingreso moderado y dominar dos activa una cuenta regresiva de 75 segundos. La partida termina por destrucción del castillo o por supremacía territorial. La IA reconoce los objetivos y los prioriza antes del asalto final.
+
+
+## Comandantes y Eventos del Mapa
+
+Los Reyes disponen de habilidades activas desde la Edad de Fortaleza. León activa **Rugido de Guerra** para potenciar temporalmente a las tropas cercanas; Nelson utiliza **Ojo del Horizonte** para revelar una región amplia incluso durante Niebla Negra. Ambas habilidades tienen enfriamiento, se validan en el host y la IA usa las mismas reglas.
+
+Dos campamentos neutrales permiten contratar Guardias Mercenarias. El Rey debe acercarse físicamente, pagar el contrato y disponer de población. Los campamentos tienen su propio enfriamiento y el Mercado de Guerra modifica temporalmente precio y disponibilidad.
+
+El mundo alterna entre Tiempo de Abundancia, Mercado de Guerra y Niebla Negra. Cada evento se anuncia 12 segundos antes, se sincroniza por snapshot y altera reglas concretas sin entregar victoria automática.
