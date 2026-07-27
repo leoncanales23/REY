@@ -2923,6 +2923,11 @@ function onSnapshot(s){
 
 // ---------- Arranque / menús ----------
 function startGame(opts){
+  // CAMPAIGN_RESTART_RESET: una misión puede reiniciarse sin recargar ni conservar UI vieja.
+  const endScreen=document.getElementById('endScreen'); if(endScreen) endScreen.style.display='none';
+  document.getElementById('battleSummary')?.replaceChildren();
+  for(const id of ['campaignRetryBtn','campaignNextBtn']){ const button=document.getElementById(id); if(button) button.hidden=true; }
+  sel.clear(); buildKind=null; drag=null; snapPrev=null; snapCur=null;
   mode=opts.mode; mySide=opts.side; enemySide = mySide==='red'?'blue':'red';
   campaignMissionId=opts.campaignId||null; campaignOutcomeSent=false;
   lastWorldAnnouncementSerial=0;
@@ -2975,7 +2980,9 @@ function showEnd(winner){
     const starLine=`${'★'.repeat(campaignResult.stars)}${'☆'.repeat(3-campaignResult.stars)}`;
     document.getElementById('endSub').textContent=campaignResult.won
       ? `ACTO ${campaignResult.act} COMPLETADO · ${campaignResult.title} · ${starLine}`
-      : `ACTO ${campaignResult.act} FALLIDO · ${campaignResult.title} · el Rey debe sobrevivir.`;
+      : reason==='campaignFailure'
+        ? `ACTO ${campaignResult.act} FALLIDO · ${campaignResult.title} · el Rey cayó en batalla.`
+        : `ACTO ${campaignResult.act} FALLIDO · ${campaignResult.title} · el reino fue derrotado.`;
   } else {
     document.getElementById('endSub').textContent = reason==='supremacy'
       ? (won?`La ${FACTIONS[mySide].name} sostuvo dos Bastiones y proclamó supremacía.`:`${COLOR[winner].name} dominó los Bastiones antes de que pudieras recuperarlos.`)

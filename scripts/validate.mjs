@@ -108,10 +108,10 @@ for (const marker of ['commanderUses', 'mercenariesHired', 'worldEvents']) {
 }
 if (game.includes('CHEAT_CODE') || game.includes('tryCheat')) throw new Error('El código secreto antiguo sigue activo después de oficializar habilidades');
 
-for (const marker of ['const CAMPAIGN_MISSIONS =', 'applyCampaignSetup', 'stepCampaign(dt)', 'scoreCampaign', "CustomEvent('reinos:campaign-complete'", 'startCampaign(id)', 'getCampaignDefinitions']) {
+for (const marker of ['const CAMPAIGN_MISSIONS =', 'applyCampaignSetup', 'stepCampaign(dt)', 'scoreCampaign', "CustomEvent('reinos:campaign-complete'", 'startCampaign(id)', 'getCampaignDefinitions', 'CAMPAIGN_RESTART_RESET']) {
   if (!game.includes(marker)) throw new Error(`Campaña incompleta en game.js: falta ${marker}`);
 }
-for (const marker of ['reinos.campaign.v1', 'bestStars', 'reinos:campaign-complete', 'campaignNextBtn', 'campaignRetryBtn']) {
+for (const marker of ['reinos.campaign.v1', 'bestStars', 'reinos:campaign-complete', 'campaignNextBtn', 'campaignRetryBtn', 'SINGLE_RETRY_HANDLER']) {
   if (!campaign.includes(marker)) throw new Error(`Mapa de campaña incompleto: falta ${marker}`);
 }
 for (const marker of ['campaignId', 'campaignTitle', 'campaignStars', "beginBattle('campaign'"]) {

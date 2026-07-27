@@ -3,7 +3,6 @@
 
   const STORAGE_KEY = 'reinos.campaign.v1';
   const byId = (id) => document.getElementById(id);
-  let lastMissionId = null;
 
   function safeJson(value, fallback) {
     try {
@@ -76,7 +75,6 @@
     button.disabled = !unlocked;
     button.textContent = best > 0 ? 'REJUGAR MISIÓN' : 'INICIAR MISIÓN';
     button.addEventListener('click', () => {
-      lastMissionId = mission.id;
       closeCampaign();
       REINOS.startCampaign(mission.id);
     });
@@ -143,7 +141,6 @@
   window.addEventListener('reinos:campaign-complete', (event) => {
     const detail = event.detail || {};
     if (!detail.id) return;
-    lastMissionId = detail.id;
     const missions = definitions();
     const index = missions.findIndex((mission) => mission.id === detail.id);
     const progress = loadProgress();
@@ -161,9 +158,7 @@
   byId('campaignDialog')?.addEventListener('click', (event) => {
     if (event.target === event.currentTarget) closeCampaign();
   });
-  byId('campaignRetryBtn')?.addEventListener('click', () => {
-    if (lastMissionId) REINOS.startCampaign(lastMissionId);
-  });
+  // SINGLE_RETRY_HANDLER: prepareEndActions asigna exactamente un onclick por resultado.
 
   renderCampaign();
 })();
