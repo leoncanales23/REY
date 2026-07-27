@@ -81,14 +81,14 @@ for (const asset of ['./chronicle.css', './chronicle.js']) {
 for (const marker of ['const AGE_DEFS =', 'const RESEARCH =', "case 'research'", 'stepResearch(dt)', 'getMatchMeta()', 'AI_AGE_RESERVE', 'activeState()', 'savingForAge']) {
   if (!game.includes(marker)) throw new Error(`Era de Conquista incompleta en game.js: falta ${marker}`);
 }
-for (const marker of ['allowedResearch', "case 'research'"]) {
+for (const marker of ['allowedResearch', "case 'research'", 'allowedAbilities', 'allowedCamps', "case 'ability'", "case 'hireMercenaries'"]) {
   if (!net.includes(marker)) throw new Error(`Contrato P2P de tecnologías incompleto: falta ${marker}`);
 }
-for (const id of ['difficultySelect', 'ageInfo', 'factionInfo', 'objectiveInfo']) {
+for (const id of ['difficultySelect', 'ageInfo', 'factionInfo', 'objectiveInfo', 'eventInfo']) {
   if (!html.includes(`id="${id}"`)) throw new Error(`Falta la interfaz de conquista #${id}`);
 }
 const sw = await readFile('rey/sw.js', 'utf8');
-if (!sw.includes('reinos-asimetricos-v4')) throw new Error('La PWA no renovó su caché para Reinos Asimétricos');
+if (!sw.includes('reinos-comandantes-v5')) throw new Error('La PWA no renovó su caché para Comandantes y Eventos');
 
 for (const marker of ['const FACTIONS =', 'OBJECTIVE_DEFS', 'stepObjectives(dt)', "victoryReason='supremacy'", 'objectives: G.objectives', 'aiObjectiveTarget', 'FOG.update(mySide,S)', 'AI_HOLD_SUPREMACY', 'OBJECTIVES_AFTER_FOG']) {
   if (!game.includes(marker)) throw new Error(`Reinos Asimétricos incompleto: falta ${marker}`);
@@ -97,4 +97,12 @@ for (const marker of ['victoryReasonName', 'finalObjectives', 'supremacyWins']) 
   if (!chronicle.includes(marker)) throw new Error(`Crónica asimétrica incompleta: falta ${marker}`);
 }
 
-console.log('Validación estática, salas, crónica, Era de Conquista y Reinos Asimétricos completadas.');
+for (const marker of ['const COMMANDER_ABILITIES =', 'MERCENARY_CAMP_DEFS', 'useCommanderAbility', 'hireMercenaries', 'stepWorldEvents(dt)', 'WORLD_EVENT_WARNING', 'AI_COMMANDER_USAGE', 'CLIENT_WORLD_ANNOUNCEMENT', 'mercenaryCamps:G.mercenaryCamps', 'ABILITY_TARGET_VALIDATED_FIRST', 'HORIZON_PROJECTILE_BONUS', 'COMMANDER_VISUAL_SIGNAL']) {
+  if (!game.includes(marker)) throw new Error(`Comandantes y Eventos incompleto: falta ${marker}`);
+}
+for (const marker of ['commanderUses', 'mercenariesHired', 'worldEvents']) {
+  if (!chronicle.includes(marker)) throw new Error(`Crónica de comandantes incompleta: falta ${marker}`);
+}
+if (game.includes('CHEAT_CODE') || game.includes('tryCheat')) throw new Error('El código secreto antiguo sigue activo después de oficializar habilidades');
+
+console.log('Validación estática, salas, crónica, conquista, asimetría, comandantes y eventos completadas.');
