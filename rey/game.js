@@ -128,6 +128,28 @@ const WORLD_EVENT_DEFS = {
 const WORLD_EVENT_IDS = Object.keys(WORLD_EVENT_DEFS);
 const WORLD_EVENT_WARNING = 12;
 
+const CAMPAIGN_MISSIONS = [
+  {
+    id:'crownVacant', act:'I', title:'LA CORONA VACÍA', side:'red', commander:'LEÓN',
+    difficulty:'explorer', difficultyLabel:'EXPLORADOR', kingMustLive:true, holdSeconds:35,
+    briefing:'La frontera quedó sin dueño. León debe ocupar el corazón del mapa antes de que Nelson convierta la Corona en una fortaleza.',
+    objective:'captura el Bastión de la Corona y sostenlo durante 35 segundos',
+  },
+  {
+    id:'steelPact', act:'II', title:'EL PACTO DE ACERO', side:'blue', commander:'NELSON',
+    difficulty:'warrior', difficultyLabel:'GUERRERO', kingMustLive:true,
+    briefing:'Nelson necesita ojos, oro y aliados. Los gremios neutrales aceptarán su bandera, pero solo si el Rey firma el contrato en persona.',
+    objective:'vence al reino rival y domina inteligencia y contratos mercenarios',
+  },
+  {
+    id:'lastCrown', act:'III', title:'LA ÚLTIMA CORONA', side:'red', commander:'LEÓN',
+    difficulty:'conqueror', difficultyLabel:'CONQUISTADOR', kingMustLive:true,
+    briefing:'Los dos reinos llegan armados a la tormenta final. La niebla caerá primero; después solo quedarán mando, territorio y acero.',
+    objective:'vence en la batalla final utilizando todas las capas estratégicas del reino',
+  },
+];
+function campaignMissionById(id){ return CAMPAIGN_MISSIONS.find((mission)=>mission.id===id) || null; }
+
 const COLOR = {
   red:  {main:'#ff3b3b', dark:'#7a1414', light:'#ff8a8a', name:'LEÓN'},
   blue: {main:'#3b8bff', dark:'#143a7a', light:'#8ac0ff', name:'NELSON'},
@@ -140,6 +162,8 @@ let enemySide = 'blue';
 let mode = 'sp';       // 'sp' | 'host' | 'client'
 let running = false;
 let aiDifficulty = 'warrior';
+let campaignMissionId = null;
+let campaignOutcomeSent = false;
 
 function freshState() {
   return {
@@ -161,6 +185,7 @@ function freshState() {
       red:{commanderUses:0,mercenariesHired:0},
       blue:{commanderUses:0,mercenariesHired:0},
     },
+    campaign:null,
     particles: [],   // sistema de partículas
   };
 }
@@ -1251,6 +1276,104 @@ function stepMercenaryCamps(dt){
   for(const camp of G.mercenaryCamps) camp.cooldown=Math.max(0,camp.cooldown-dt*speed);
 }
 
+function spawnCampaignForce(side,units){
+  const castle=G.ents.find((entity)=>entity.side===side && entity.kind==='castle');
+  if(!castle) return;
+  units.forEach((kind,index)=>{
+    const row=Math.floor(index/3), col=index%3;
+    const direction=side==='red'?1:-1;
+    spawn(side,kind,castle.x+direction*(100+col*24),castle.y-70+row*28);
+  });
+}
+function applyCampaignSetup(id){
+  const mission=campaignMissionById(id);
+  if(!mission) return;
+  G.campaign={id,hold:0,completed:false,stars:0,failure:null,objective:mission.objective};
+  const own=G.res[mySide], enemy=G.res[enemySide];
+  if(id==='crownVacant'){
+    own.age=2; own.g+=350; own.w+=300;
+    spawnCampaignForce(mySide,['swordsman','swordsman','swordsman','archer']);
+    G.worldEvent.nextAt=135;
+  } else if(id==='steelPact'){
+    own.age=2; own.g+=650; own.w+=500;
+    spawnCampaignForce(mySide,['archer','archer','swordsman']);
+    G.worldEvent.nextAt=82;
+  } else if(id==='lastCrown'){
+    own.age=2; own.g+=520; own.w+=430;
+    enemy.age=2; enemy.g+=280; enemy.w+=240;
+    spawnCampaignForce(mySide,['swordsman','swordsman','archer','archer']);
+    spawnCampaignForce(enemySide,['swordsman','swordsman','archer']);
+    G.worldEvent.warning='blackFog'; G.worldEvent.warningT=8; G.worldEvent.nextAt=9999;
+    setWorldAnnouncement('⚠ NIEBLA NEGRA llegará en 8s · comienza la batalla final');
+  }
+  recalcPop();
+  toast(`📜 ACTO ${mission.act} · ${mission.title}`);
+}
+function campaignObjectiveText(state=activeState()){
+  const mission=campaignMissionById(state?.campaign?.id);
+  if(!mission || !state?.campaign) return '';
+  const stats=state.stats?.[mySide]||{};
+  if(mission.id==='crownVacant') return `ACTO I · CORONA ${Math.floor(state.campaign.hold||0)}/${mission.holdSeconds}s · REY CON VIDA`;
+  if(mission.id==='steelPact') return `ACTO II · OJO ${stats.commanderUses||0} · MERCENARIOS ${stats.mercenariesHired||0} · VENCE`;
+  return `ACTO III · PODERES ${stats.commanderUses||0} · MERC ${stats.mercenariesHired||0} · EVENTOS ${state.worldEvent?.seen||0}`;
+}
+function stepCampaign(dt){
+  if(!G.campaign || G.winner) return;
+  const mission=campaignMissionById(G.campaign.id);
+  if(!mission) return;
+  const king=G.ents.find((entity)=>entity.side===mySide && entity.kind==='king' && entity.hp>0);
+  if(mission.kingMustLive && !king){
+    G.campaign.failure='king'; G.winner=enemySide; G.victoryReason='campaignFailure';
+    return;
+  }
+  if(mission.id==='crownVacant'){
+    const crown=G.objectives.find((objective)=>objective.id==='crown');
+    if(crown?.owner===mySide) G.campaign.hold+=dt;
+    else G.campaign.hold=Math.max(0,G.campaign.hold-dt*.65);
+    if(G.campaign.hold>=mission.holdSeconds){
+      G.campaign.completed=true; G.winner=mySide; G.victoryReason='campaign';
+    }
+  }
+}
+function scoreCampaign(state,winner){
+  const mission=campaignMissionById(state?.campaign?.id);
+  if(!mission) return 0;
+  const won=winner===mySide;
+  if(!won) return 0;
+  const stats=state.stats?.[mySide]||{};
+  const kingAlive=state.ents.some((entity)=>entity.side===mySide && entity.kind==='king' && entity.hp>0);
+  let stars=1;
+  if(mission.id==='crownVacant'){
+    if((state.campaign?.hold||0)>=mission.holdSeconds || state.victoryReason==='campaign') stars++;
+    if(kingAlive && state.time<=300) stars++;
+  } else if(mission.id==='steelPact'){
+    if((stats.mercenariesHired||0)>=4) stars++;
+    if((stats.commanderUses||0)>=1 && state.time<=480) stars++;
+  } else if(mission.id==='lastCrown'){
+    if((stats.commanderUses||0)>=2 && (stats.mercenariesHired||0)>=2) stars++;
+    if(state.victoryReason==='supremacy' || (state.worldEvent?.seen||0)>=2) stars++;
+  }
+  return Math.min(3,stars);
+}
+function finalizeCampaignOutcome(winner,state){
+  if(!campaignMissionId || campaignOutcomeSent || !state) return null;
+  const mission=campaignMissionById(campaignMissionId);
+  if(!mission) return null;
+  const won=winner===mySide;
+  const stars=scoreCampaign(state,winner);
+  if(state.campaign) state.campaign.stars=stars;
+  const detail={
+    id:mission.id, act:mission.act, title:mission.title, won, stars,
+    time:Math.round(state.time||0), victoryReason:state.victoryReason||'castle',
+    commanderUses:state.stats?.[mySide]?.commanderUses||0,
+    mercenariesHired:state.stats?.[mySide]?.mercenariesHired||0,
+    worldEvents:state.worldEvent?.seen||0,
+  };
+  campaignOutcomeSent=true;
+  window.dispatchEvent(new CustomEvent('reinos:campaign-complete',{detail}));
+  return detail;
+}
+
 // ---------- Simulación ----------
 function step(dt){
   if(G.winner) return;
@@ -1335,6 +1458,8 @@ function step(dt){
   recalcPop();
 
   if(castleDead){ G.winner = (castleDead==='red')?'blue':'red'; G.victoryReason='castle'; }
+  stepCampaign(dt);
+  if(G.winner) return;
 
   // IA (solo single player, controla al enemigo)
   if(mode==='sp'){ aiStep(dt); }
@@ -2629,6 +2754,11 @@ function updateHUD(){
   else if(world.id) worldText=`🌍 ${WORLD_EVENT_DEFS[world.id].name} ${Math.max(0,Math.ceil(world.t))}s · ${WORLD_EVENT_DEFS[world.id].note}`;
   else worldText=`MUNDO ESTABLE · próximo evento ${Math.max(0,Math.ceil((world.nextAt||0)-(S.time||0)))}s`;
   setText('eventInfo',worldText);
+  const campaignInfo=document.getElementById('campaignInfo');
+  if(campaignInfo){
+    campaignInfo.style.display=S.campaign?'block':'none';
+    if(S.campaign) campaignInfo.textContent=campaignObjectiveText(S);
+  }
   const ageName=AGE_DEFS[r.age||1].name;
   const researchText=r.research?` · ⚙ ${RESEARCH[r.research.id].name} ${Math.max(0,Math.ceil(r.research.t))}s`:'';
   setText('ageInfo', ageName+researchText);
@@ -2794,6 +2924,7 @@ function onSnapshot(s){
 // ---------- Arranque / menús ----------
 function startGame(opts){
   mode=opts.mode; mySide=opts.side; enemySide = mySide==='red'?'blue':'red';
+  campaignMissionId=opts.campaignId||null; campaignOutcomeSent=false;
   lastWorldAnnouncementSerial=0;
   aiDifficulty=AI_PROFILES[opts.difficulty]?opts.difficulty:'warrior';
   SFX.init(); SFX.resume();
@@ -2805,6 +2936,7 @@ function startGame(opts){
     Net.onSnap=onSnapshot;
   } else {
     initMap();
+    if(campaignMissionId) applyCampaignSetup(campaignMissionId);
     if(mode==='host'){ Net.onCmd=(cmd)=>applyCommand(cmd,enemySide); }
   }
   document.getElementById('menu').style.display='none';
@@ -2838,9 +2970,17 @@ function showEnd(winner){
   document.getElementById('endTitle').style.color = won?'#7CFC00':'#ff5555';
   const state=renderState();
   const reason=state?.victoryReason || 'castle';
-  document.getElementById('endSub').textContent = reason==='supremacy'
-    ? (won?`La ${FACTIONS[mySide].name} sostuvo dos Bastiones y proclamó supremacía.`:`${COLOR[winner].name} dominó los Bastiones antes de que pudieras recuperarlos.`)
-    : (won?`El reino de ${COLOR[mySide].name} derribó el castillo enemigo.`:`El reino de ${COLOR[winner].name} arrasó tu castillo.`);
+  const campaignResult=finalizeCampaignOutcome(winner,state);
+  if(campaignResult){
+    const starLine=`${'★'.repeat(campaignResult.stars)}${'☆'.repeat(3-campaignResult.stars)}`;
+    document.getElementById('endSub').textContent=campaignResult.won
+      ? `ACTO ${campaignResult.act} COMPLETADO · ${campaignResult.title} · ${starLine}`
+      : `ACTO ${campaignResult.act} FALLIDO · ${campaignResult.title} · el Rey debe sobrevivir.`;
+  } else {
+    document.getElementById('endSub').textContent = reason==='supremacy'
+      ? (won?`La ${FACTIONS[mySide].name} sostuvo dos Bastiones y proclamó supremacía.`:`${COLOR[winner].name} dominó los Bastiones antes de que pudieras recuperarlos.`)
+      : (won?`El reino de ${COLOR[mySide].name} derribó el castillo enemigo.`:`El reino de ${COLOR[winner].name} arrasó tu castillo.`);
+  }
   document.getElementById('endScreen').style.display='flex';
 }
 
@@ -2851,11 +2991,23 @@ let _inviteUrl = '';
 window.REINOS = {
   startSolo(side,difficulty='warrior'){ startGame({mode:'sp', side, difficulty}); },
 
+  startCampaign(id){
+    const mission=campaignMissionById(id);
+    if(!mission) return false;
+    startGame({mode:'sp',side:mission.side,difficulty:mission.difficulty,campaignId:mission.id});
+    return true;
+  },
+
+  getCampaignDefinitions(){
+    return CAMPAIGN_MISSIONS.map(({id,act,title,side,commander,difficulty,difficultyLabel,briefing,objective})=>({id,act,title,side,commander,difficulty,difficultyLabel,briefing,objective}));
+  },
+
   getMatchMeta(){
     const S=renderState();
     return {
-      mode, side:mySide, difficulty:mode==='sp'?aiDifficulty:'human', age:S?.res?.[mySide]?.age||1,
+      mode:campaignMissionId?'campaign':mode, side:mySide, difficulty:mode==='sp'?aiDifficulty:'human', age:S?.res?.[mySide]?.age||1,
       faction:FACTIONS[mySide].name, victoryReason:S?.victoryReason||'castle',
+      campaignId:campaignMissionId, campaignTitle:campaignMissionById(campaignMissionId)?.title||null, campaignStars:S?.campaign?.stars||0,
       objectives:objectiveCount(S,mySide), dominance:Math.floor(S?.dominance?.[mySide]||0),
       commanderUses:S?.stats?.[mySide]?.commanderUses||0, mercenariesHired:S?.stats?.[mySide]?.mercenariesHired||0,
       worldEvents:S?.worldEvent?.seen||0, lastWorldEvent:S?.worldEvent?.lastId||S?.worldEvent?.id||null,
