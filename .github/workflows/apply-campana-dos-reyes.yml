@@ -1,0 +1,42 @@
+name: Apply Campaña de los Dos Reyes
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: write
+concurrency:
+  group: campana-dos-reyes-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  transform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.head_ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply campaign layer
+        run: python3 scripts/apply-campana-dos-reyes.py
+      - name: Validate generated campaign
+        run: |
+          node --check rey/game.js
+          node --check rey/net.js
+          node --check rey/app.js
+          node --check rey/chronicle.js
+          node --check rey/campaign.js
+          node --check rey/sw.js
+          node scripts/validate.mjs
+      - name: Commit generated source
+        run: |
+          if git diff --quiet; then
+            echo "Campaña already applied"
+            exit 0
+          fi
+          git config user.name "reinos-campaign-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add rey README.md scripts/validate.mjs
+          git commit -m "feat: add three-act campaign and persistent stars [campaign-generated]"
+          git push origin HEAD:${{ github.head_ref }}
