@@ -23,6 +23,16 @@ jobs:
         continue-on-error: true
         run: |
           base64 -d scripts/apply-lab.py.gz.b64 | gzip -d > /tmp/apply-lab.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('/tmp/apply-lab.py')
+          source = path.read_text()
+          old = "La PWA no renovó su caché para la Campaña');"
+          new = "La PWA no renovó su caché para Campaña de los Dos Reyes');"
+          if old not in source:
+              raise SystemExit('No se encontró el mensaje de caché a ajustar')
+          path.write_text(source.replace(old, new, 1))
+          PY
           python3 /tmp/apply-lab.py > /tmp/lab-transform.log 2>&1
       - name: Publish transformer diagnostic
         if: steps.apply_lab.outcome == 'failure'
