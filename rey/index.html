@@ -13,6 +13,8 @@
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="chronicle.css">
 <link rel="stylesheet" href="campaign.css">
+<link rel="stylesheet" href="scenario.css">
+<link rel="stylesheet" href="replay.css">
 </head>
 <body class="crt">
   <canvas id="game" aria-label="Campo de batalla de REINOS"></canvas>
@@ -44,6 +46,12 @@
       <h2>CAMPAÑA DE LOS DOS REYES</h2>
       <div class="row">
         <button id="openCampaignBtn" class="btn campaign" type="button">ABRIR CAMPAÑA<small>3 actos · progreso persistente · 9 estrellas</small></button>
+      </div>
+      <div class="divider">— · · · —</div>
+      <h2>LABORATORIO DEL REINO</h2>
+      <div class="row">
+        <button id="openScenarioBtn" class="btn scenario" type="button">EDITOR DE ESCENARIOS<small>reglas, ejércitos, semillas e importación JSON</small></button>
+        <button id="openReplayBtn" class="btn replay" type="button">REPETICIONES<small>semilla + órdenes · biblioteca local</small></button>
       </div>
       <div class="divider">— · · · —</div>
       <h2>DUELO ONLINE</h2>
@@ -80,11 +88,15 @@
     <div class="stat objectives" id="objectiveInfo">BASTIONES 0/3</div>
     <div class="stat event" id="eventInfo">MUNDO ESTABLE</div>
     <div class="stat" id="campaignInfo">ACTO I</div>
+    <div class="stat" id="scenarioInfo">ESCENARIO</div>
+    <div class="stat" id="replayInfo">REPETICIÓN</div>
     <div class="stat" id="enemyInfo"></div>
   </div>
   <div id="matchTools" hidden>
     <span id="connectionBadge" class="badge" data-state="waiting">SOLO</span>
     <button id="copyInviteHud" class="hud-btn" type="button">INVITAR</button>
+    <button id="replayPauseBtn" class="hud-btn" type="button" hidden aria-label="Pausar repetición">Ⅱ</button>
+    <button id="replaySpeedBtn" class="hud-btn" type="button" hidden aria-label="Velocidad de repetición">1×</button>
     <button id="fullscreenHud" class="hud-btn" type="button" aria-label="Pantalla completa">⛶</button>
   </div>
   <div id="panel"><div id="selInfo">— sin selección —</div><div id="cmds"></div></div>
@@ -135,6 +147,66 @@
     </div>
   </dialog>
 
+
+  <dialog id="scenarioDialog" class="scenario-dialog" aria-labelledby="scenarioDialogTitle">
+    <div class="scenario-shell">
+      <div class="scenario-header">
+        <div><span class="scenario-kicker">CARTOGRAFÍA TÁCTICA</span><h2 id="scenarioDialogTitle">EDITOR DE ESCENARIOS</h2></div>
+        <button id="closeScenarioBtn" class="hud-btn" type="button" aria-label="Cerrar editor">✕</button>
+      </div>
+      <div class="scenario-layout">
+        <form id="scenarioForm" class="scenario-form" onsubmit="return false">
+          <h3>REGLAS DEL CAMPO</h3>
+          <div class="scenario-field wide"><label for="scenarioTitle">NOMBRE</label><input id="scenarioTitle" maxlength="48" value="Frontera sin Nombre"></div>
+          <div class="scenario-field"><label for="scenarioSide">COMANDANTE</label><select id="scenarioSide"><option value="red">León</option><option value="blue">Nelson</option></select></div>
+          <div class="scenario-field"><label for="scenarioDifficulty">IA</label><select id="scenarioDifficulty"><option value="explorer">Explorador</option><option value="warrior" selected>Guerrero</option><option value="conqueror">Conquistador</option></select></div>
+          <div class="scenario-field"><label for="scenarioAge">EDAD INICIAL</label><select id="scenarioAge"><option value="1">Aldea</option><option value="2" selected>Fortaleza</option><option value="3">Imperial</option></select></div>
+          <div class="scenario-field"><label for="scenarioVictoryMode">VICTORIA</label><select id="scenarioVictoryMode"><option value="standard">Castillo o supremacía</option><option value="castleOnly">Solo castillo</option><option value="crownHold">Sostener la Corona</option></select></div>
+          <div id="scenarioHoldRow" class="scenario-field"><label for="scenarioHoldSeconds">SEGUNDOS EN LA CORONA</label><input id="scenarioHoldSeconds" type="number" min="20" max="120" value="45"></div>
+          <div class="scenario-field"><label for="scenarioSeed">SEMILLA, VACÍA = AUTOMÁTICA</label><input id="scenarioSeed" type="number" min="1" max="4294967295"></div>
+          <div class="scenario-field"><label for="scenarioGold">ORO INICIAL</label><input id="scenarioGold" type="number" min="0" max="3000" value="600"></div>
+          <div class="scenario-field"><label for="scenarioWood">MADERA INICIAL</label><input id="scenarioWood" type="number" min="0" max="3000" value="500"></div>
+          <div class="scenario-field wide scenario-check"><input id="scenarioWorldEvents" type="checkbox" checked><label for="scenarioWorldEvents">EVENTOS MUNDIALES ACTIVOS</label></div>
+          <div class="scenario-unit-grid">
+            <div class="scenario-field"><label for="scenarioSwordsmen">ESPADACHINES</label><input id="scenarioSwordsmen" type="number" min="0" max="12" value="3"></div>
+            <div class="scenario-field"><label for="scenarioArchers">ARQUEROS</label><input id="scenarioArchers" type="number" min="0" max="12" value="2"></div>
+            <div class="scenario-field"><label for="scenarioKnights">CABALLEROS</label><input id="scenarioKnights" type="number" min="0" max="6" value="0"></div>
+          </div>
+          <div class="scenario-form-actions">
+            <button id="scenarioStartBtn" class="mini-btn" type="button">JUGAR AHORA</button>
+            <button id="scenarioSaveBtn" class="mini-btn" type="button">GUARDAR ESCENARIO</button>
+          </div>
+        </form>
+        <section class="scenario-library">
+          <div class="scenario-library-header"><h3>BIBLIOTECA</h3><div class="scenario-library-tools">
+            <label class="mini-btn file-button">IMPORTAR<input id="scenarioImportInput" type="file" accept="application/json,.json"></label>
+            <button id="scenarioExportBtn" class="mini-btn" type="button">EXPORTAR TODO</button>
+          </div></div>
+          <div id="scenarioList" class="scenario-list"></div>
+          <button id="scenarioClearBtn" class="mini-btn danger" type="button">BORRAR BIBLIOTECA</button>
+        </section>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="replayDialog" class="replay-dialog" aria-labelledby="replayDialogTitle">
+    <div class="replay-shell">
+      <div class="replay-header">
+        <div><span class="replay-kicker">ARCHIVO DEL ESTRATEGA</span><h2 id="replayDialogTitle">REPETICIONES DE BATALLA</h2></div>
+        <button id="closeReplayBtn" class="hud-btn" type="button" aria-label="Cerrar repeticiones">✕</button>
+      </div>
+      <div id="replaySummary" class="replay-summary"></div>
+      <div id="replayList" class="replay-list"></div>
+      <div class="replay-actions">
+        <div>
+          <label class="mini-btn file-button">IMPORTAR<input id="replayImportInput" type="file" accept="application/json,.json"></label>
+          <button id="replayExportBtn" class="mini-btn" type="button">EXPORTAR TODO</button>
+        </div>
+        <button id="replayClearBtn" class="mini-btn danger" type="button">BORRAR REPETICIONES</button>
+      </div>
+    </div>
+  </dialog>
+
   <noscript>REINOS necesita JavaScript para ejecutar la simulación.</noscript>
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" crossorigin="anonymous"></script>
   <script src="net.js"></script>
@@ -142,5 +214,7 @@
   <script src="app.js"></script>
   <script src="chronicle.js"></script>
   <script src="campaign.js"></script>
+  <script src="scenario.js"></script>
+  <script src="replay.js"></script>
 </body>
 </html>

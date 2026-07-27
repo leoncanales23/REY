@@ -141,6 +141,31 @@
       };
     }
 
+
+    if (typeof REINOS.startScenario === 'function') {
+      const originalScenario = REINOS.startScenario.bind(REINOS);
+      REINOS.startScenario = (config) => {
+        const started = originalScenario(config);
+        if (started !== false) {
+          showMatchShell();
+          setConnectionState('ESCENARIO', true);
+        }
+        return started;
+      };
+    }
+
+    if (typeof REINOS.startReplay === 'function') {
+      const originalReplay = REINOS.startReplay.bind(REINOS);
+      REINOS.startReplay = (record) => {
+        const started = originalReplay(record);
+        if (started !== false) {
+          showMatchShell();
+          setConnectionState('REPETICIÓN', true);
+        }
+        return started;
+      };
+    }
+
     const originalHost = REINOS.hostGame.bind(REINOS);
     REINOS.hostGame = () => {
       originalHost();
