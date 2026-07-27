@@ -82,6 +82,6 @@ Cada misión entrega hasta tres estrellas según objetivos secundarios, tiempo y
 
 ## Laboratorio de Escenarios y Repeticiones
 
-El Editor de Escenarios v1 permite definir comandante, dificultad, edad, recursos, ejército inicial, eventos, semilla y condición de victoria. Los escenarios se sanitizan dentro del motor, pueden guardarse localmente, exportarse como JSON e importarse sin ejecutar código externo.
+El Editor de Escenarios v1 permite definir comandante, dificultad, edad, recursos, ejército inicial, eventos, semilla y condición de victoria. En Control de la Corona ambos castillos son inmortales y cualquiera de los dos reinos puede ganar sosteniendo el Bastión central. Los escenarios se sanitizan dentro del motor, pueden guardarse localmente, exportarse como JSON e importarse sin ejecutar código externo.
 
 Las batallas locales y las partidas alojadas registran una repetición compacta basada en semilla y órdenes humanas por tick. La IA y los eventos se reconstruyen con el generador determinista del motor, evitando bibliotecas de snapshots pesadas. La reproducción permite pausa y velocidades 1×, 2× y 4×.

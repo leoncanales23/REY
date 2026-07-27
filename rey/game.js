@@ -234,7 +234,10 @@ function normalizeScenario(input){
   };
 }
 function normalizeReplay(input){
-  if(!input || typeof input!=='object' || input.version!==REPLAY_VERSION) return null;
+  // REPLAY_ENGINE_LOCK: una repetición solo se ejecuta con el motor que la produjo.
+  if(!input || typeof input!=='object' || input.version!==REPLAY_VERSION || input.engine!=='reinos-lab-v7') return null;
+  const finalTick=boundedInt(input.finalTick,1,1000000,0);
+  if(!finalTick) return null;
   let encoded='';
   try{ encoded=JSON.stringify(input); }catch{ return null; }
   if(encoded.length>1500000 || !Array.isArray(input.commands) || input.commands.length>REPLAY_COMMAND_LIMIT) return null;
@@ -242,7 +245,7 @@ function normalizeReplay(input){
   const kind=['solo','online','campaign','scenario'].includes(input.kind)?input.kind:(sourceMode==='host'?'online':'solo');
   const commands=[];
   for(const entry of input.commands){
-    if(!entry || !Number.isInteger(entry.tick) || entry.tick<0 || entry.tick>1000000) return null;
+    if(!entry || !Number.isInteger(entry.tick) || entry.tick<0 || entry.tick>finalTick) return null;
     const side=entry.side==='blue'?'blue':entry.side==='red'?'red':null;
     const cmd=globalThis.Net?.validateCommand?.(entry.cmd);
     if(!side || !cmd) return null;
@@ -260,7 +263,7 @@ function normalizeReplay(input){
     difficulty:AI_PROFILES[input.difficulty]?input.difficulty:(sourceMode==='host'?'human':'warrior'),
     seed:normalizeSeed(input.seed),
     campaignId, scenario, commands,
-    finalTick:boundedInt(input.finalTick,0,1000000,0),
+    finalTick,
     durationSeconds:Math.max(0,Number(input.durationSeconds)||0),
     finishedAt:Number(input.finishedAt)||Date.now(),
     winner:input.winner==='blue'?'blue':'red',
@@ -286,7 +289,11 @@ function beginReplayCapture(sourceMode){
   };
 }
 function recordReplayCommand(side,cmd){
-  if(!replayCapture || mode==='replay' || replayCapture.commands.length>=REPLAY_COMMAND_LIMIT) return;
+  if(!replayCapture || mode==='replay') return;
+  if(replayCapture.commands.length>=REPLAY_COMMAND_LIMIT){
+    // REPLAY_OVERFLOW_GUARD: nunca publica una repetición truncada.
+    replayCapture.overflow=true; return;
+  }
   const clean=globalThis.Net?.validateCommand?.(cmd);
   if(!clean) return;
   replayCapture.commands.push({tick:G?.tick||0,side:side==='blue'?'blue':'red',cmd:clean});
@@ -307,6 +314,11 @@ function emitReplayState(active=mode==='replay'){
 }
 function finalizeReplayCapture(winner,state){
   if(!replayCapture || !state) return;
+  if(replayCapture.overflow){
+    replayCapture=null;
+    toast('🎞 Repetición omitida: la batalla superó el límite de órdenes.');
+    return;
+  }
   const record={
     ...replayCapture,
     finalTick:state.tick||0,
@@ -1549,7 +1561,7 @@ function spawnScenarioForce(side,units){
 function applyScenarioSetup(config){
   const scenario=normalizeScenario(config);
   currentScenario=scenario;
-  G.scenario={...scenario,units:{...scenario.units},hold:0,completed:false};
+  G.scenario={...scenario,units:{...scenario.units},hold:0,holdBySide:{red:0,blue:0},completed:false};
   const own=G.res[mySide];
   own.age=scenario.age; own.g=scenario.gold; own.w=scenario.wood;
   spawnScenarioForce(mySide,scenario.units);
@@ -1562,25 +1574,37 @@ function applyScenarioSetup(config){
 function scenarioObjectiveText(state=activeState()){
   const scenario=state?.scenario;
   if(!scenario) return '';
-  if(scenario.victoryMode==='crownHold') return `ESCENARIO · CORONA ${Math.floor(scenario.hold||0)}/${scenario.holdSeconds}s`;
+  if(scenario.victoryMode==='crownHold'){
+    const own=Math.floor(scenario.holdBySide?.[mySide]||0), rival=Math.floor(scenario.holdBySide?.[enemySide]||0);
+    return `ESCENARIO · CORONA ${own}/${scenario.holdSeconds}s · RIVAL ${rival}s · CASTILLOS INMORTALES`;
+  }
   if(scenario.victoryMode==='castleOnly') return 'ESCENARIO · DERRIBA EL CASTILLO · SUPREMACÍA DESACTIVADA';
   return 'ESCENARIO · CASTILLO O SUPREMACÍA';
 }
 function stepScenario(dt){
   const scenario=G.scenario;
   if(!scenario || G.winner || scenario.victoryMode!=='crownHold') return;
+  // CROWN_HOLD_EXCLUSIVE: ambos reinos compiten por una victoria territorial única.
   const crown=G.objectives.find((objective)=>objective.id==='crown');
-  if(crown?.owner===mySide) scenario.hold+=dt;
-  else scenario.hold=Math.max(0,scenario.hold-dt*.65);
-  if(scenario.hold>=scenario.holdSeconds){
-    scenario.completed=true; G.winner=mySide; G.victoryReason='scenario';
+  const holds=scenario.holdBySide||(scenario.holdBySide={red:0,blue:0});
+  for(const side of ['red','blue']){
+    if(crown?.owner===side) holds[side]+=dt;
+    else holds[side]=Math.max(0,holds[side]-dt*.65);
+    if(holds[side]>=scenario.holdSeconds){
+      scenario.hold=holds[mySide]; scenario.completed=true; G.winner=side; G.victoryReason='scenario'; return;
+    }
   }
+  scenario.hold=holds[mySide];
 }
 // SCENARIO_RULES_LAB: reglas sanitizadas y separadas del duelo libre.
 
 // ---------- Simulación ----------
 function step(dt){
   if(G.winner) return;
+  if(mode==='replay' && replayPlayback && G.tick>replayPlayback.record.finalTick+20){
+    // REPLAY_FINAL_TICK_BOUNDARY: una importación manipulada no puede simular para siempre.
+    G.winner=replayPlayback.record.winner; G.victoryReason='replayBoundary'; return;
+  }
   applyReplayCommands();
   G.time += dt; G.tick++;
   stepResearch(dt);
@@ -1834,6 +1858,7 @@ function shoot(from, tgt, dmg, fromBuilding){
   });
 }
 function damage(t, amount, fromSide){
+  if(G.scenario?.victoryMode==='crownHold' && t.kind==='castle') return;
   if(t.hp<=0) return;
   t.hp -= amount;
   spawnParticles(t.x, t.y, 'hit');
@@ -3201,6 +3226,12 @@ function showEnd(winner){
   document.getElementById('endTitle').style.color = won?'#7CFC00':'#ff5555';
   const state=renderState();
   const reason=state?.victoryReason || 'castle';
+  if(mode==='replay' && reason==='replayBoundary'){
+    document.getElementById('endTitle').textContent='REPETICIÓN INCOMPATIBLE';
+    document.getElementById('endTitle').style.color='#ffb35c';
+    document.getElementById('endSub').textContent='El estado no alcanzó el desenlace registrado dentro del tick final permitido.';
+    document.getElementById('endScreen').style.display='flex'; emitReplayState(false); return;
+  }
   const campaignResult=finalizeCampaignOutcome(winner,state);
   finalizeReplayCapture(winner,state);
   if(campaignResult){
@@ -3212,7 +3243,7 @@ function showEnd(winner){
         : `ACTO ${campaignResult.act} FALLIDO · ${campaignResult.title} · el reino fue derrotado.`;
   } else if(state?.scenario){
     document.getElementById('endSub').textContent=reason==='scenario'
-      ? `${state.scenario.title} · la Corona quedó bajo control.`
+      ? (won?`${state.scenario.title} · la Corona quedó bajo tu control.`:`${state.scenario.title} · el rival sostuvo la Corona primero.`)
       : won?`${state.scenario.title} · el escenario fue conquistado.`:`${state.scenario.title} · el reino rival impuso sus reglas.`;
   } else {
     document.getElementById('endSub').textContent = reason==='supremacy'

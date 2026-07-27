@@ -127,13 +127,13 @@ for (const marker of ['campaignId', 'campaignTitle', 'campaignStars', "beginBatt
 for (const id of ['openScenarioBtn','scenarioDialog','scenarioInfo','openReplayBtn','replayDialog','replayInfo','replayPauseBtn','replaySpeedBtn']) {
   if (!html.includes(`id="${id}"`)) throw new Error(`Falta la interfaz del laboratorio #${id}`);
 }
-for (const marker of ['SCENARIO_RULES_LAB','normalizeScenario','applyScenarioSetup','stepScenario(dt)','startScenario(config)','scenarioTitle']) {
+for (const marker of ['SCENARIO_RULES_LAB','CROWN_HOLD_EXCLUSIVE','CASTILLOS INMORTALES','normalizeScenario','applyScenarioSetup','stepScenario(dt)','startScenario(config)','scenarioTitle']) {
   if (!game.includes(marker)) throw new Error(`Editor de escenarios incompleto: falta ${marker}`);
 }
 for (const marker of ['reinos.scenarios.v1','MAX_SCENARIOS','scenarioImportInput','scenarioExportBtn','REINOS.startScenario']) {
   if (!scenario.includes(marker)) throw new Error(`Biblioteca de escenarios incompleta: falta ${marker}`);
 }
-for (const marker of ['REPLAY_SEEDED_RNG','REPLAY_DETERMINISTIC_COMMAND_LOG','recordReplayCommand','applyReplayCommands','normalizeReplay','startReplay(record)','cycleReplaySpeed']) {
+for (const marker of ['REPLAY_SEEDED_RNG','REPLAY_DETERMINISTIC_COMMAND_LOG','REPLAY_ENGINE_LOCK','REPLAY_OVERFLOW_GUARD','REPLAY_FINAL_TICK_BOUNDARY','recordReplayCommand','applyReplayCommands','normalizeReplay','startReplay(record)','cycleReplaySpeed']) {
   if (!game.includes(marker)) throw new Error(`Repeticiones deterministas incompletas: falta ${marker}`);
 }
 for (const marker of ['reinos.replays.v1','MAX_REPLAYS','reinos:replay-complete','replayImportInput','toggleReplayPause']) {
