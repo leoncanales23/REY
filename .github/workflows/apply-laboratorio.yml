@@ -21,7 +21,20 @@ jobs:
       - name: Apply scenario and replay laboratory
         run: |
           base64 -d scripts/apply-lab.py.gz.b64 | gzip -d > /tmp/apply-lab.py
-          python3 /tmp/apply-lab.py
+          set +e
+          python3 /tmp/apply-lab.py > /tmp/lab-transform.log 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            cp /tmp/lab-transform.log scripts/lab-transform-error.txt
+            git config user.name "reinos-lab-bot"
+            git config user.email "actions@users.noreply.github.com"
+            git add scripts/lab-transform-error.txt
+            git commit -m "chore: capture laboratory transformer diagnostic" || true
+            git push origin HEAD:${{ github.head_ref }} || true
+            exit "$status"
+          fi
+          rm -f scripts/lab-transform-error.txt
       - name: Validate generated laboratory
         run: |
           node --check rey/game.js
