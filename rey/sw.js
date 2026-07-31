@@ -1,6 +1,6 @@
-const CACHE_NAME = 'reinos-campana-v6';
+const CACHE_NAME = 'reinos-laboratorio-v7';
 const APP_SHELL = [
-  './', './index.html', './style.css', './chronicle.css', './campaign.css', './net.js', './game.js', './app.js', './chronicle.js', './campaign.js',
+  './', './index.html', './style.css', './chronicle.css', './campaign.css', './scenario.css', './replay.css', './net.js', './game.js', './app.js', './chronicle.js', './campaign.js', './scenario.js', './replay.js',
   './manifest.webmanifest', './icons/reinos-192.png', './icons/reinos-512.png',
 ];
 self.addEventListener('install', (event) => {

@@ -6,11 +6,15 @@ const required = [
   'rey/style.css',
   'rey/chronicle.css',
   'rey/campaign.css',
+  'rey/scenario.css',
+  'rey/replay.css',
   'rey/net.js',
   'rey/game.js',
   'rey/app.js',
   'rey/chronicle.js',
   'rey/campaign.js',
+  'rey/scenario.js',
+  'rey/replay.js',
   'rey/sw.js',
   'rey/manifest.webmanifest',
   'rey/icons/reinos-192.png',
@@ -27,9 +31,11 @@ const game = await readFile('rey/game.js', 'utf8');
 const net = await readFile('rey/net.js', 'utf8');
 const chronicle = await readFile('rey/chronicle.js', 'utf8');
 const campaign = await readFile('rey/campaign.js', 'utf8');
+const scenario = await readFile('rey/scenario.js', 'utf8');
+const replay = await readFile('rey/replay.js', 'utf8');
 const serviceWorker = await readFile('rey/sw.js', 'utf8');
 
-for (const ref of ['style.css', 'chronicle.css', 'campaign.css', 'net.js', 'game.js', 'app.js', 'chronicle.js', 'campaign.js', 'manifest.webmanifest']) {
+for (const ref of ['style.css', 'chronicle.css', 'campaign.css', 'scenario.css', 'replay.css', 'net.js', 'game.js', 'app.js', 'chronicle.js', 'campaign.js', 'scenario.js', 'replay.js', 'manifest.webmanifest']) {
   if (!html.includes(ref)) throw new Error(`index.html no referencia ${ref}`);
 }
 
@@ -91,7 +97,7 @@ for (const id of ['difficultySelect', 'ageInfo', 'factionInfo', 'objectiveInfo',
   if (!html.includes(`id="${id}"`)) throw new Error(`Falta la interfaz de conquista #${id}`);
 }
 const sw = await readFile('rey/sw.js', 'utf8');
-if (!sw.includes('reinos-campana-v6')) throw new Error('La PWA no renovó su caché para Campaña de los Dos Reyes');
+if (!sw.includes('reinos-laboratorio-v7')) throw new Error('La PWA no renovó su caché para el Laboratorio');
 
 for (const marker of ['const FACTIONS =', 'OBJECTIVE_DEFS', 'stepObjectives(dt)', "victoryReason='supremacy'", 'objectives: G.objectives', 'aiObjectiveTarget', 'FOG.update(mySide,S)', 'AI_HOLD_SUPREMACY', 'OBJECTIVES_AFTER_FOG']) {
   if (!game.includes(marker)) throw new Error(`Reinos Asimétricos incompleto: falta ${marker}`);
@@ -118,4 +124,24 @@ for (const marker of ['campaignId', 'campaignTitle', 'campaignStars', "beginBatt
   if (!chronicle.includes(marker)) throw new Error(`Crónica de campaña incompleta: falta ${marker}`);
 }
 
-console.log('Validación estática, salas, crónica, conquista, asimetría, comandantes, eventos y campaña completadas.');
+for (const id of ['openScenarioBtn','scenarioDialog','scenarioInfo','openReplayBtn','replayDialog','replayInfo','replayPauseBtn','replaySpeedBtn']) {
+  if (!html.includes(`id="${id}"`)) throw new Error(`Falta la interfaz del laboratorio #${id}`);
+}
+for (const marker of ['SCENARIO_RULES_LAB','CROWN_HOLD_EXCLUSIVE','CASTILLOS INMORTALES','normalizeScenario','applyScenarioSetup','stepScenario(dt)','startScenario(config)','scenarioTitle']) {
+  if (!game.includes(marker)) throw new Error(`Editor de escenarios incompleto: falta ${marker}`);
+}
+for (const marker of ['reinos.scenarios.v1','MAX_SCENARIOS','scenarioImportInput','scenarioExportBtn','REINOS.startScenario']) {
+  if (!scenario.includes(marker)) throw new Error(`Biblioteca de escenarios incompleta: falta ${marker}`);
+}
+for (const marker of ['REPLAY_SEEDED_RNG','REPLAY_DETERMINISTIC_COMMAND_LOG','REPLAY_ENGINE_LOCK','REPLAY_OVERFLOW_GUARD','REPLAY_FINAL_TICK_BOUNDARY','recordReplayCommand','applyReplayCommands','normalizeReplay','startReplay(record)','cycleReplaySpeed']) {
+  if (!game.includes(marker)) throw new Error(`Repeticiones deterministas incompletas: falta ${marker}`);
+}
+for (const marker of ['reinos.replays.v1','MAX_REPLAYS','reinos:replay-complete','replayImportInput','toggleReplayPause']) {
+  if (!replay.includes(marker)) throw new Error(`Biblioteca de repeticiones incompleta: falta ${marker}`);
+}
+for (const asset of ['./scenario.css','./replay.css','./scenario.js','./replay.js']) {
+  if (!serviceWorker.includes(asset)) throw new Error(`El service worker no cachea ${asset}`);
+}
+if (game.includes('Math.random()')) throw new Error('game.js conserva azar no sembrado y rompería la reproducción determinista');
+
+console.log('Validación estática, campaña, laboratorio de escenarios y repeticiones deterministas completadas.');

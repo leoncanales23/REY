@@ -44,6 +44,7 @@
     if (mode === 'host') return 'Duelo online · anfitrión';
     if (mode === 'client') return 'Duelo online · invitado';
     if (mode === 'campaign') return 'Campaña';
+    if (mode === 'scenario') return 'Escenario personalizado';
     return 'Un jugador';
   }
 
@@ -55,6 +56,7 @@
     if (value === 'supremacy') return 'Supremacía de Bastiones';
     if (value === 'campaign') return 'Objetivo de campaña';
     if (value === 'campaignFailure') return 'Rey caído';
+    if (value === 'scenario') return 'Control de la Corona';
     return 'Castillo destruido';
   }
 
@@ -92,7 +94,7 @@
       mode,
       side: normalizeSide(side),
       room: room || null,
-      difficulty: mode === 'sp' || mode === 'campaign' ? difficulty : 'human',
+      difficulty: mode === 'sp' || mode === 'campaign' || mode === 'scenario' ? difficulty : 'human',
       ...extras,
     };
     finalizedBattleId = null;
@@ -215,7 +217,8 @@
       const details = document.createElement('div');
       details.className = 'chronicle-entry-details';
       const campaignLabel=entry.campaignTitle?` · ${entry.campaignTitle} · ${'★'.repeat(entry.campaignStars||0)}${'☆'.repeat(3-(entry.campaignStars||0))}`:'';
-      details.textContent = `${sideName(entry.side)} · ${factionName(entry.side)} · ${modeName(entry.mode)}${campaignLabel} · ${difficultyName(entry.difficulty)} · ${victoryReasonName(entry.victoryReason)} · 👑${entry.commanderUses||0} · ⚔${entry.mercenariesHired||0} · Edad ${entry.finalAge||1} · ${formatDuration(entry.durationMs)}`;
+      const scenarioLabel=entry.scenarioTitle?` · ${entry.scenarioTitle}`:'';
+      details.textContent = `${sideName(entry.side)} · ${factionName(entry.side)} · ${modeName(entry.mode)}${campaignLabel}${scenarioLabel} · ${difficultyName(entry.difficulty)} · ${victoryReasonName(entry.victoryReason)} · 👑${entry.commanderUses||0} · ⚔${entry.mercenariesHired||0} · Edad ${entry.finalAge||1} · ${formatDuration(entry.durationMs)}`;
 
       article.append(header, details);
       list.appendChild(article);
@@ -241,6 +244,7 @@
     appendStat(grid, 'mercenarios', entry.mercenariesHired||0);
     appendStat(grid, 'eventos', entry.worldEvents||0);
     if(entry.campaignTitle){ appendStat(grid, 'misión', entry.campaignTitle); appendStat(grid, 'estrellas', `${entry.campaignStars||0}/3`); }
+    if(entry.scenarioTitle) appendStat(grid, 'escenario', entry.scenarioTitle);
     appendStat(grid, 'racha', entry.result === 'victory' ? streak : 0);
     summary.appendChild(grid);
   }
@@ -269,6 +273,9 @@
       campaignId: meta.campaignId || activeBattle.campaignId || null,
       campaignTitle: meta.campaignTitle || activeBattle.campaignTitle || null,
       campaignStars: meta.campaignStars || 0,
+      scenarioTitle: meta.scenarioTitle || activeBattle.scenarioTitle || null,
+      scenarioVictoryMode: meta.scenarioVictoryMode || activeBattle.scenarioVictoryMode || null,
+      seed: meta.seed || null,
       finishedAt: Date.now(),
       durationMs: Math.max(1000, Date.now() - activeBattle.startedAt),
       result: titleText.includes('VICTORIA') ? 'victory' : 'defeat',
@@ -329,6 +336,17 @@
           : null;
         const started = originalCampaign(id);
         if (started !== false && mission) beginBattle('campaign', mission.side, null, mission.difficulty, { campaignId:id, campaignTitle:mission.title });
+        return started;
+      };
+    }
+
+
+    if (typeof REINOS.startScenario === 'function') {
+      const originalScenario = REINOS.startScenario.bind(REINOS);
+      REINOS.startScenario = (config) => {
+        const normalized = typeof REINOS.normalizeScenario === 'function' ? REINOS.normalizeScenario(config) : config;
+        const started = originalScenario(normalized);
+        if (started !== false && normalized) beginBattle('scenario', normalized.side, null, normalized.difficulty, { scenarioTitle:normalized.title, scenarioVictoryMode:normalized.victoryMode });
         return started;
       };
     }

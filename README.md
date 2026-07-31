@@ -78,3 +78,10 @@ El mundo alterna entre Tiempo de Abundancia, Mercado de Guerra y Niebla Negra. C
 La campaña añade tres actos desbloqueables sin alterar el duelo libre. **La Corona Vacía** enseña control territorial mediante una victoria especial por sostener el Bastión central. **El Pacto de Acero** coloca a Nelson frente a contratos mercenarios e inteligencia táctica. **La Última Corona** combina dificultad Conquistador, Niebla Negra inicial, comandantes, eventos, mercenarios y las dos condiciones clásicas de victoria.
 
 Cada misión entrega hasta tres estrellas según objetivos secundarios, tiempo y uso de sistemas. El progreso y la mejor puntuación se guardan localmente en el navegador mediante `reinos.campaign.v1`; la Crónica de Guerra conserva además el acto, la misión y las estrellas de cada intento terminado.
+
+
+## Laboratorio de Escenarios y Repeticiones
+
+El Editor de Escenarios v1 permite definir comandante, dificultad, edad, recursos, ejército inicial, eventos, semilla y condición de victoria. En Control de la Corona ambos castillos son inmortales y cualquiera de los dos reinos puede ganar sosteniendo el Bastión central. Los escenarios se sanitizan dentro del motor, pueden guardarse localmente, exportarse como JSON e importarse sin ejecutar código externo.
+
+Las batallas locales y las partidas alojadas registran una repetición compacta basada en semilla y órdenes humanas por tick. La IA y los eventos se reconstruyen con el generador determinista del motor, evitando bibliotecas de snapshots pesadas. La reproducción permite pausa y velocidades 1×, 2× y 4×.
