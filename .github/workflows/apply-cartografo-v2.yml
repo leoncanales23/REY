@@ -1,0 +1,52 @@
+name: Apply Cartografo v2
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: write
+concurrency:
+  group: cartografo-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  transform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.head_ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply Cartographer v2
+        run: |
+          if grep -q 'VISUAL_SCENARIO_EDITOR_V2' rey/game.js; then
+            echo 'Cartographer v2 already applied'
+          else
+            python3 scripts/apply-cartografo-v2.py
+          fi
+      - name: Validate generated product
+        run: |
+          node --check rey/game.js
+          node --check rey/net.js
+          node --check rey/app.js
+          node --check rey/chronicle.js
+          node --check rey/campaign.js
+          node --check rey/scenario.js
+          node --check rey/replay.js
+          node --check rey/determinism.js
+          node --check rey/sw.js
+          node scripts/validate.mjs
+          node scripts/test-determinism.mjs
+          node scripts/browser-determinism.mjs
+      - name: Commit generated product
+        run: |
+          if git diff --quiet; then
+            echo 'No generated changes'
+            exit 0
+          fi
+          git config user.name 'reinos-cartographer-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add README.md rey scripts/validate.mjs .github/workflows/validate.yml
+          git commit -m 'feat: integrate visual layouts and replay checksums [generated]'
+          git push origin HEAD:${{ github.head_ref }}
