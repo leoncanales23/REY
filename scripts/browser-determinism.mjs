@@ -1,10 +1,11 @@
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 
 const root = resolve(process.cwd());
 const port = 4173;
+const MAX_OUTPUT = 8 * 1024 * 1024;
 const mime = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -29,6 +30,48 @@ async function deterministicHarness() {
     .replace(/\s*<script src="campaign\.js"><\/script>/, '')
     .replace(/\s*<script src="scenario\.js"><\/script>/, '')
     .replace(/\s*<script src="replay\.js"><\/script>/, '');
+}
+
+function runBrowser(browser, args) {
+  return new Promise((resolveRun, rejectRun) => {
+    const child = spawn(browser, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+
+    const finish = (error, result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) rejectRun(error);
+      else resolveRun(result);
+    };
+
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      finish(new Error('Chrome excedió 30 segundos durante la prueba determinista'));
+    }, 30000);
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+      if (stdout.length > MAX_OUTPUT) {
+        child.kill('SIGKILL');
+        finish(new Error('Chrome produjo más de 8 MB de salida DOM'));
+      }
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+      if (stderr.length > MAX_OUTPUT) stderr = stderr.slice(-MAX_OUTPUT);
+    });
+    child.on('error', (error) => finish(error));
+    child.on('close', (code, signal) => {
+      if (code !== 0) {
+        finish(new Error(`Chrome terminó con código ${code ?? 'nulo'} (${signal || 'sin señal'}): ${stderr}`));
+        return;
+      }
+      finish(null, { stdout, stderr });
+    });
+  });
 }
 
 const server = createServer(async (request, response) => {
@@ -68,7 +111,7 @@ try {
   if (!browser) throw new Error('No se encontró Chrome o Chromium en el runner');
 
   const target = `http://127.0.0.1:${port}/rey/determinism-harness.html?determinism-test=1`;
-  const run = spawnSync(browser, [
+  const run = await runBrowser(browser, [
     '--headless=new',
     '--no-sandbox',
     '--disable-gpu',
@@ -80,10 +123,8 @@ try {
     '--virtual-time-budget=15000',
     '--dump-dom',
     target,
-  ], { encoding: 'utf8', timeout: 30000, maxBuffer: 8 * 1024 * 1024 });
+  ]);
 
-  if (run.error) throw run.error;
-  if (run.status !== 0) throw new Error(`Chrome terminó con código ${run.status}: ${run.stderr}`);
   if (!run.stdout.includes('data-determinism="pass"')) {
     const probe = run.stdout.match(/<pre id="determinismProbe"[^>]*>([\s\S]*?)<\/pre>/)?.[1] || 'sin resultado';
     throw new Error(`La prueba de navegador no verificó determinismo: ${probe}`);
