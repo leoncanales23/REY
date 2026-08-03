@@ -100,7 +100,7 @@
     meta.textContent = `${kindName(record.kind)} · ${sideName(record.side)} · ${formatDuration(record.durationSeconds)} · ${record.commands.length} órdenes`;
 
     const detail = document.createElement('p');
-    detail.textContent = `Semilla ${record.seed} · ${formatDate(entry.savedAt || record.finishedAt || Date.now())}`;
+    detail.textContent = `Semilla ${record.seed} · checksum ${record.finalChecksum} · ${formatDate(entry.savedAt || record.finishedAt || Date.now())}`;
 
     const actions = document.createElement('div');
     actions.className = 'replay-card-actions';
@@ -120,7 +120,7 @@
     exportButton.textContent = 'EXPORTAR';
     exportButton.addEventListener('click', () => {
       downloadJson(`reinos-replay-${record.finishedAt || Date.now()}.json`, {
-        schema: 'reinos-replay-v1',
+        schema: 'reinos-replay-v2',
         replay: record,
       });
     });
@@ -144,16 +144,25 @@
     const summary = byId('replaySummary');
     if (!list) return;
     const library = loadLibrary();
+    const compatible = [];
+    let incompatible = 0;
+    for (const entry of library) {
+      const record = normalize(entry.record || entry);
+      if (record) compatible.push({ entry, record });
+      else incompatible++;
+    }
     list.replaceChildren();
-    if (summary) summary.textContent = `${library.length}/${MAX_REPLAYS} REPETICIONES GUARDADAS`;
-    if (!library.length) {
+    if (summary) summary.textContent = `${compatible.length}/${MAX_REPLAYS} COMPATIBLES${incompatible ? ` · ${incompatible} ANTIGUAS O INCOMPATIBLES` : ''}`;
+    if (!compatible.length) {
       const empty = document.createElement('p');
       empty.className = 'replay-empty';
-      empty.textContent = 'Las batallas terminadas en este dispositivo aparecerán aquí.';
+      empty.textContent = incompatible
+        ? 'Las grabaciones v1 no contienen checksum final y no pueden verificarse. Puedes exportarlas antes de limpiar la biblioteca.'
+        : 'Las batallas terminadas en este dispositivo aparecerán aquí.';
       list.appendChild(empty);
       return;
     }
-    for (const entry of library) {
+    for (const { entry } of compatible) {
       const card = createReplayCard(entry);
       if (card) list.appendChild(card);
     }
@@ -185,7 +194,7 @@
 
   function exportLibrary() {
     downloadJson('reinos-repeticiones.json', {
-      schema: 'reinos-replays-v1',
+      schema: 'reinos-replays-v2',
       exportedAt: new Date().toISOString(),
       replays: loadLibrary(),
     });
@@ -194,7 +203,7 @@
   async function importLibrary(file) {
     if (!file || file.size > 2000000) return;
     const payload = safeJson(await file.text(), null);
-    const incoming = payload?.schema === 'reinos-replay-v1'
+    const incoming = payload?.replay
       ? [payload.replay]
       : Array.isArray(payload) ? payload : payload?.replays;
     if (!Array.isArray(incoming)) return;

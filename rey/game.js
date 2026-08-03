@@ -1590,6 +1590,8 @@ function scenarioPointAllowed(item){
   if(G.objectives.some((objective)=>dist(item.x,item.y,objective.x,objective.y)<radius+OBJECTIVE_RADIUS+8)) return false;
   if(G.mercenaryCamps.some((camp)=>dist(item.x,item.y,camp.x,camp.y)<radius+58)) return false;
   if(['tower','barracks','gold','wood'].includes(item.kind)) return validPlacement(item.x,item.y,radius);
+  if(G.nodes.some((node)=>dist(item.x,item.y,node.x,node.y)<radius+node.r+6)) return false;
+  if(G.ents.some((entity)=>entity.building&&dist(item.x,item.y,entity.x,entity.y)<radius+DEFS[entity.kind].r+6)) return false;
   return !G.ents.some((entity)=>!entity.building&&dist(item.x,item.y,entity.x,entity.y)<DEFS[entity.kind].r+radius+2);
 }
 function ensureScenarioHousing(side){
@@ -1606,16 +1608,17 @@ function ensureScenarioHousing(side){
 }
 function applyScenarioPlacements(scenario){
   const layout=scenario.placements||[];
-  if(!layout.length) return false;
+  if(!layout.length) return 0;
+  let accepted=0;
   // VISUAL_SCENARIO_EDITOR_V2: cada pieza importada se valida otra vez dentro del motor.
   for(const item of layout){
     if(!scenarioPointAllowed(item)) continue;
     if(item.kind==='gold' || item.kind==='wood') addNode(item.kind,item.x,item.y,item.kind==='gold'?1200:320);
     else spawn(item.side,item.kind,item.x,item.y,true);
+    accepted++;
   }
-  ensureScenarioHousing('red');
-  ensureScenarioHousing('blue');
-  return true;
+  if(accepted){ ensureScenarioHousing('red'); ensureScenarioHousing('blue'); }
+  return accepted;
 }
 function applyScenarioSetup(config){
   const scenario=normalizeScenario(config);
@@ -1623,12 +1626,15 @@ function applyScenarioSetup(config){
   G.scenario={...scenario,units:{...scenario.units},placements:(scenario.placements||[]).map((item)=>({...item})),hold:0,holdBySide:{red:0,blue:0},completed:false};
   const own=G.res[mySide];
   own.age=scenario.age; own.g=scenario.gold; own.w=scenario.wood;
-  if(!applyScenarioPlacements(scenario)) spawnScenarioForce(mySide,scenario.units);
+  const appliedPlacements=applyScenarioPlacements(scenario);
+  G.scenario.appliedPlacements=appliedPlacements;
+  // SCENARIO_REJECTED_LAYOUT_FALLBACK: un JSON totalmente rechazado conserva un ejército jugable.
+  if(!appliedPlacements) spawnScenarioForce(mySide,scenario.units);
   if(!scenario.worldEvents){
     G.worldEvent.id=null; G.worldEvent.warning=null; G.worldEvent.t=0; G.worldEvent.warningT=0; G.worldEvent.nextAt=1000000000;
   }
   recalcPop();
-  toast(`🗺 CARTÓGRAFO · ${scenario.title} · ${(scenario.placements||[]).length} piezas`);
+  toast(`🗺 CARTÓGRAFO · ${scenario.title} · ${appliedPlacements}/${(scenario.placements||[]).length} piezas aceptadas`);
 }
 function scenarioObjectiveText(state=activeState()){
   const scenario=state?.scenario;

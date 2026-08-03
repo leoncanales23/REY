@@ -132,7 +132,7 @@ for (const marker of ['campaignId', 'campaignTitle', 'campaignStars', "beginBatt
 for (const id of ['openScenarioBtn','scenarioDialog','scenarioInfo','scenarioMapCanvas','scenarioPalette','scenarioPlacementCount','scenarioMapFromUnitsBtn','scenarioMapMirrorBtn','scenarioMapClearBtn','openReplayBtn','replayDialog','replayInfo','replayPauseBtn','replaySpeedBtn']) {
   if (!html.includes(`id="${id}"`)) throw new Error(`Falta la interfaz del laboratorio #${id}`);
 }
-for (const marker of ['SCENARIO_RULES_LAB','VISUAL_SCENARIO_EDITOR_V2','SCENARIO_PLACEMENT_LIMIT','applyScenarioPlacements','CROWN_HOLD_EXCLUSIVE','CASTILLOS INMORTALES','normalizeScenario','applyScenarioSetup','stepScenario(dt)','startScenario(config)','scenarioTitle']) {
+for (const marker of ['SCENARIO_RULES_LAB','VISUAL_SCENARIO_EDITOR_V2','SCENARIO_PLACEMENT_LIMIT','SCENARIO_REJECTED_LAYOUT_FALLBACK','applyScenarioPlacements','CROWN_HOLD_EXCLUSIVE','CASTILLOS INMORTALES','normalizeScenario','applyScenarioSetup','stepScenario(dt)','startScenario(config)','scenarioTitle']) {
   if (!game.includes(marker)) throw new Error(`Editor de escenarios incompleto: falta ${marker}`);
 }
 for (const marker of ['reinos.scenarios.v1','MAX_SCENARIOS','MAX_PLACEMENTS','scenarioMapCanvas','mirrorArmy','scenarioImportInput','scenarioExportBtn','REINOS.startScenario']) {
@@ -141,7 +141,7 @@ for (const marker of ['reinos.scenarios.v1','MAX_SCENARIOS','MAX_PLACEMENTS','sc
 for (const marker of ['REPLAY_SEEDED_RNG','REPLAY_DETERMINISTIC_COMMAND_LOG','REPLAY_FINAL_CHECKSUM','runDeterminismProbe','finalChecksum','REPLAY_ENGINE_LOCK','REPLAY_OVERFLOW_GUARD','REPLAY_FINAL_TICK_BOUNDARY','recordReplayCommand','applyReplayCommands','normalizeReplay','startReplay(record)','cycleReplaySpeed']) {
   if (!game.includes(marker)) throw new Error(`Repeticiones deterministas incompletas: falta ${marker}`);
 }
-for (const marker of ['reinos.replays.v1','MAX_REPLAYS','reinos:replay-complete','replayImportInput','toggleReplayPause']) {
+for (const marker of ['reinos.replays.v1','reinos-replays-v2','reinos-replay-v2','ANTIGUAS O INCOMPATIBLES','MAX_REPLAYS','reinos:replay-complete','replayImportInput','toggleReplayPause']) {
   if (!replay.includes(marker)) throw new Error(`Biblioteca de repeticiones incompleta: falta ${marker}`);
 }
 for (const asset of ['./scenario.css','./replay.css','./scenario.js','./replay.js','./determinism.js']) {
