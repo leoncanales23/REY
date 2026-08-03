@@ -25,6 +25,7 @@ jobs:
           else
             python3 scripts/apply-cartografo-v2.py
           fi
+          python3 scripts/finalize-cartografo-v2.py
       - name: Validate generated product
         run: |
           node --check rey/game.js
@@ -48,5 +49,5 @@ jobs:
           git config user.name 'reinos-cartographer-bot'
           git config user.email 'actions@users.noreply.github.com'
           git add README.md rey scripts/validate.mjs .github/workflows/validate.yml
-          git commit -m 'feat: integrate visual layouts and replay checksums [generated]'
+          git commit -m 'fix: harden visual layouts and replay library [generated]'
           git push origin HEAD:${{ github.head_ref }}
