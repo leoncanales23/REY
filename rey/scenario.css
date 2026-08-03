@@ -1,13 +1,13 @@
-.scenario-dialog{width:min(1080px,95vw);max-height:92vh;padding:0;border:1px solid #5f815e;background:rgba(5,10,8,.98);color:#edf7df;box-shadow:0 0 44px rgba(0,0,0,.78)}
+.scenario-dialog{width:min(1240px,97vw);max-height:94vh;padding:0;border:1px solid #5f815e;background:rgba(5,10,8,.98);color:#edf7df;box-shadow:0 0 44px rgba(0,0,0,.78)}
 .scenario-dialog::backdrop{background:rgba(0,0,0,.84);backdrop-filter:blur(4px)}
-.scenario-shell{padding:24px;overflow:auto;max-height:90vh}
+.scenario-shell{padding:24px;overflow:auto;max-height:92vh}
 .scenario-header{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;border-bottom:1px solid rgba(150,210,140,.24);padding-bottom:14px;margin-bottom:18px}
 .scenario-kicker{display:block;color:#9ee493;font-size:14px;letter-spacing:2px}
 .scenario-header h2{font-size:31px;margin:4px 0 0}
-.scenario-layout{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(300px,.9fr);gap:18px}
-.scenario-form,.scenario-library{border:1px solid rgba(150,210,140,.28);background:rgba(14,28,18,.72);padding:16px}
+.scenario-layout{display:grid;grid-template-columns:minmax(320px,.86fr) minmax(500px,1.34fr);gap:18px;align-items:start}
+.scenario-form,.scenario-library,.scenario-map-editor{border:1px solid rgba(150,210,140,.28);background:rgba(14,28,18,.72);padding:16px}
 .scenario-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-.scenario-form h3,.scenario-library h3{grid-column:1/-1;margin:0 0 4px;color:#c9ffc0;font-size:22px}
+.scenario-form h3,.scenario-library h3,.scenario-map-editor h3{grid-column:1/-1;margin:0 0 4px;color:#c9ffc0;font-size:22px}
 .scenario-field{display:flex;flex-direction:column;gap:5px}
 .scenario-field.wide{grid-column:1/-1}
 .scenario-field label{font-size:14px;color:#b8cdb4;letter-spacing:.6px}
@@ -16,18 +16,33 @@
 .scenario-check{display:flex;align-items:center;gap:9px;min-height:40px}
 .scenario-unit-grid{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .scenario-form-actions{grid-column:1/-1;display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+.scenario-map-editor{min-width:0}
+.scenario-map-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.scenario-map-heading h3{margin:0}
+#scenarioPlacementCount{color:#aee9a4;font:700 13px ui-monospace,monospace;white-space:nowrap}
+.scenario-palette{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}
+.scenario-tool{font-size:12px;padding:7px 8px;min-width:auto}
+.scenario-tool.active{border-color:#caffbf;background:rgba(116,181,103,.35);box-shadow:0 0 0 1px rgba(202,255,191,.25) inset;color:#efffea}
+.scenario-map-stage{position:relative;border:1px solid #587158;background:#08140d;overflow:hidden;box-shadow:0 10px 28px rgba(0,0,0,.28) inset}
+#scenarioMapCanvas{display:block;width:100%;height:auto;aspect-ratio:26/17;touch-action:none;cursor:crosshair}
+.scenario-map-legend{position:absolute;left:8px;top:8px;display:flex;gap:8px;flex-wrap:wrap;pointer-events:none;font:700 11px ui-monospace,monospace;text-shadow:0 1px 2px #000}
+.scenario-map-legend .red{color:#ff8f86}.scenario-map-legend .blue{color:#8dbaff}.scenario-map-legend .neutral{color:#e5d381}
+.scenario-map-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+#scenarioMapStatus{margin:10px 0 0;min-height:32px;color:#acc3a8;font-size:13px;line-height:1.3}
+.scenario-library{grid-column:1/-1}
 .scenario-library-header{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px}
 .scenario-library-tools{display:flex;gap:7px;flex-wrap:wrap}
-.scenario-list{display:flex;flex-direction:column;gap:10px;max-height:560px;overflow:auto}
+.scenario-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;max-height:520px;overflow:auto}
 .scenario-card{padding:12px;border:1px solid rgba(151,204,139,.28);background:rgba(5,13,8,.82)}
 .scenario-card-heading{display:flex;justify-content:space-between;gap:12px;align-items:center}
 .scenario-card-heading strong{font-size:19px;color:#ecffe7}
 .scenario-card-heading span{font-size:13px;letter-spacing:1px}.scenario-card-heading .red{color:#ff9a8f}.scenario-card-heading .blue{color:#9dc8ff}
 .scenario-card p{margin:7px 0;color:#b7c8b3;line-height:1.25}
 .scenario-card-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
-.scenario-empty{padding:24px 12px;text-align:center;color:#9eb19a;border:1px dashed rgba(151,204,139,.28)}
+.scenario-empty{grid-column:1/-1;padding:24px 12px;text-align:center;color:#9eb19a;border:1px dashed rgba(151,204,139,.28)}
 .btn.scenario{border-color:#6c9f64;background:linear-gradient(180deg,rgba(67,116,61,.62),rgba(22,48,25,.86));color:#dffff0}
 #scenarioInfo{display:none;color:#caffbf;font-size:16px;border-left:1px solid rgba(158,228,147,.35);padding-left:12px}
 .file-button{position:relative;overflow:hidden}.file-button input{position:absolute;inset:0;opacity:0;cursor:pointer}
-@media(max-width:900px){.scenario-layout{grid-template-columns:1fr}.scenario-form{grid-template-columns:1fr}.scenario-field.wide,.scenario-form h3,.scenario-form-actions{grid-column:1}.scenario-unit-grid{grid-column:1;grid-template-columns:1fr 1fr 1fr}.scenario-shell{padding:15px}#scenarioInfo{order:8;width:100%;border-left:0;padding-left:0}}
-@media(max-width:520px){.scenario-unit-grid{grid-template-columns:1fr}.scenario-library-header{align-items:flex-start;flex-direction:column}.scenario-header h2{font-size:25px}}
+@media(max-width:980px){.scenario-layout{grid-template-columns:1fr}.scenario-form,.scenario-map-editor,.scenario-library{grid-column:1}.scenario-list{grid-template-columns:1fr}.scenario-shell{padding:15px}#scenarioInfo{order:8;width:100%;border-left:0;padding-left:0}}
+@media(max-width:620px){.scenario-form{grid-template-columns:1fr}.scenario-field.wide,.scenario-form h3,.scenario-form-actions{grid-column:1}.scenario-unit-grid{grid-column:1;grid-template-columns:1fr 1fr 1fr}.scenario-map-heading,.scenario-library-header{align-items:flex-start;flex-direction:column}.scenario-header h2{font-size:25px}}
+@media(max-width:440px){.scenario-unit-grid{grid-template-columns:1fr}.scenario-tool{flex:1 1 42%}}
