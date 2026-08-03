@@ -20,9 +20,27 @@ function safePath(urlPath) {
   return candidate.startsWith(root) ? candidate : null;
 }
 
+async function deterministicHarness() {
+  const index = await readFile(join(root, 'rey/index.html'), 'utf8');
+  return index
+    .replace(/\s*<script src="https:\/\/unpkg\.com\/peerjs[^>]*><\/script>/, '')
+    .replace(/\s*<script src="app\.js"><\/script>/, '')
+    .replace(/\s*<script src="chronicle\.js"><\/script>/, '')
+    .replace(/\s*<script src="campaign\.js"><\/script>/, '')
+    .replace(/\s*<script src="scenario\.js"><\/script>/, '')
+    .replace(/\s*<script src="replay\.js"><\/script>/, '');
+}
+
 const server = createServer(async (request, response) => {
   try {
-    let filePath = safePath(request.url || '/');
+    const requestUrl = new URL(request.url || '/', `http://127.0.0.1:${port}`);
+    if (requestUrl.pathname === '/rey/determinism-harness.html') {
+      response.writeHead(200, { 'content-type': mime['.html'] });
+      response.end(await deterministicHarness());
+      return;
+    }
+
+    let filePath = safePath(requestUrl.pathname);
     if (!filePath) throw new Error('invalid path');
     const info = await stat(filePath).catch(() => null);
     if (info?.isDirectory()) filePath = join(filePath, 'index.html');
@@ -49,7 +67,7 @@ try {
   }
   if (!browser) throw new Error('No se encontró Chrome o Chromium en el runner');
 
-  const target = `http://127.0.0.1:${port}/rey/?determinism-test=1`;
+  const target = `http://127.0.0.1:${port}/rey/determinism-harness.html?determinism-test=1`;
   const run = spawnSync(browser, [
     '--headless=new',
     '--no-sandbox',
@@ -59,10 +77,10 @@ try {
     '--disable-default-apps',
     '--disable-extensions',
     '--mute-audio',
-    '--virtual-time-budget=30000',
+    '--virtual-time-budget=15000',
     '--dump-dom',
     target,
-  ], { encoding: 'utf8', timeout: 45000, maxBuffer: 8 * 1024 * 1024 });
+  ], { encoding: 'utf8', timeout: 30000, maxBuffer: 8 * 1024 * 1024 });
 
   if (run.error) throw run.error;
   if (run.status !== 0) throw new Error(`Chrome terminó con código ${run.status}: ${run.stderr}`);
