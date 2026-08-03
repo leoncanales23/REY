@@ -9,6 +9,7 @@ const required = [
   'rey/scenario.css',
   'rey/replay.css',
   'rey/net.js',
+  'rey/determinism.js',
   'rey/game.js',
   'rey/app.js',
   'rey/chronicle.js',
@@ -19,6 +20,8 @@ const required = [
   'rey/manifest.webmanifest',
   'rey/icons/reinos-192.png',
   'rey/icons/reinos-512.png',
+  'scripts/test-determinism.mjs',
+  'scripts/browser-determinism.mjs',
 ];
 
 await Promise.all(required.map((path) => access(path, constants.R_OK)));
@@ -29,13 +32,15 @@ const html = await readFile('rey/index.html', 'utf8');
 const app = await readFile('rey/app.js', 'utf8');
 const game = await readFile('rey/game.js', 'utf8');
 const net = await readFile('rey/net.js', 'utf8');
+const determinism = await readFile('rey/determinism.js', 'utf8');
+const workflow = await readFile('.github/workflows/validate.yml', 'utf8');
 const chronicle = await readFile('rey/chronicle.js', 'utf8');
 const campaign = await readFile('rey/campaign.js', 'utf8');
 const scenario = await readFile('rey/scenario.js', 'utf8');
 const replay = await readFile('rey/replay.js', 'utf8');
 const serviceWorker = await readFile('rey/sw.js', 'utf8');
 
-for (const ref of ['style.css', 'chronicle.css', 'campaign.css', 'scenario.css', 'replay.css', 'net.js', 'game.js', 'app.js', 'chronicle.js', 'campaign.js', 'scenario.js', 'replay.js', 'manifest.webmanifest']) {
+for (const ref of ['style.css', 'chronicle.css', 'campaign.css', 'scenario.css', 'replay.css', 'net.js', 'determinism.js', 'game.js', 'app.js', 'chronicle.js', 'campaign.js', 'scenario.js', 'replay.js', 'manifest.webmanifest']) {
   if (!html.includes(ref)) throw new Error(`index.html no referencia ${ref}`);
 }
 
@@ -97,7 +102,7 @@ for (const id of ['difficultySelect', 'ageInfo', 'factionInfo', 'objectiveInfo',
   if (!html.includes(`id="${id}"`)) throw new Error(`Falta la interfaz de conquista #${id}`);
 }
 const sw = await readFile('rey/sw.js', 'utf8');
-if (!sw.includes('reinos-laboratorio-v7')) throw new Error('La PWA no renovó su caché para el Laboratorio');
+if (!sw.includes('reinos-cartografo-v8')) throw new Error('La PWA no renovó su caché para Cartógrafo v2');
 
 for (const marker of ['const FACTIONS =', 'OBJECTIVE_DEFS', 'stepObjectives(dt)', "victoryReason='supremacy'", 'objectives: G.objectives', 'aiObjectiveTarget', 'FOG.update(mySide,S)', 'AI_HOLD_SUPREMACY', 'OBJECTIVES_AFTER_FOG']) {
   if (!game.includes(marker)) throw new Error(`Reinos Asimétricos incompleto: falta ${marker}`);
@@ -124,24 +129,31 @@ for (const marker of ['campaignId', 'campaignTitle', 'campaignStars', "beginBatt
   if (!chronicle.includes(marker)) throw new Error(`Crónica de campaña incompleta: falta ${marker}`);
 }
 
-for (const id of ['openScenarioBtn','scenarioDialog','scenarioInfo','openReplayBtn','replayDialog','replayInfo','replayPauseBtn','replaySpeedBtn']) {
+for (const id of ['openScenarioBtn','scenarioDialog','scenarioInfo','scenarioMapCanvas','scenarioPalette','scenarioPlacementCount','scenarioMapFromUnitsBtn','scenarioMapMirrorBtn','scenarioMapClearBtn','openReplayBtn','replayDialog','replayInfo','replayPauseBtn','replaySpeedBtn']) {
   if (!html.includes(`id="${id}"`)) throw new Error(`Falta la interfaz del laboratorio #${id}`);
 }
-for (const marker of ['SCENARIO_RULES_LAB','CROWN_HOLD_EXCLUSIVE','CASTILLOS INMORTALES','normalizeScenario','applyScenarioSetup','stepScenario(dt)','startScenario(config)','scenarioTitle']) {
+for (const marker of ['SCENARIO_RULES_LAB','VISUAL_SCENARIO_EDITOR_V2','SCENARIO_PLACEMENT_LIMIT','applyScenarioPlacements','CROWN_HOLD_EXCLUSIVE','CASTILLOS INMORTALES','normalizeScenario','applyScenarioSetup','stepScenario(dt)','startScenario(config)','scenarioTitle']) {
   if (!game.includes(marker)) throw new Error(`Editor de escenarios incompleto: falta ${marker}`);
 }
-for (const marker of ['reinos.scenarios.v1','MAX_SCENARIOS','scenarioImportInput','scenarioExportBtn','REINOS.startScenario']) {
+for (const marker of ['reinos.scenarios.v1','MAX_SCENARIOS','MAX_PLACEMENTS','scenarioMapCanvas','mirrorArmy','scenarioImportInput','scenarioExportBtn','REINOS.startScenario']) {
   if (!scenario.includes(marker)) throw new Error(`Biblioteca de escenarios incompleta: falta ${marker}`);
 }
-for (const marker of ['REPLAY_SEEDED_RNG','REPLAY_DETERMINISTIC_COMMAND_LOG','REPLAY_ENGINE_LOCK','REPLAY_OVERFLOW_GUARD','REPLAY_FINAL_TICK_BOUNDARY','recordReplayCommand','applyReplayCommands','normalizeReplay','startReplay(record)','cycleReplaySpeed']) {
+for (const marker of ['REPLAY_SEEDED_RNG','REPLAY_DETERMINISTIC_COMMAND_LOG','REPLAY_FINAL_CHECKSUM','runDeterminismProbe','finalChecksum','REPLAY_ENGINE_LOCK','REPLAY_OVERFLOW_GUARD','REPLAY_FINAL_TICK_BOUNDARY','recordReplayCommand','applyReplayCommands','normalizeReplay','startReplay(record)','cycleReplaySpeed']) {
   if (!game.includes(marker)) throw new Error(`Repeticiones deterministas incompletas: falta ${marker}`);
 }
 for (const marker of ['reinos.replays.v1','MAX_REPLAYS','reinos:replay-complete','replayImportInput','toggleReplayPause']) {
   if (!replay.includes(marker)) throw new Error(`Biblioteca de repeticiones incompleta: falta ${marker}`);
 }
-for (const asset of ['./scenario.css','./replay.css','./scenario.js','./replay.js']) {
+for (const asset of ['./scenario.css','./replay.css','./scenario.js','./replay.js','./determinism.js']) {
   if (!serviceWorker.includes(asset)) throw new Error(`El service worker no cachea ${asset}`);
 }
 if (game.includes('Math.random()')) throw new Error('game.js conserva azar no sembrado y rompería la reproducción determinista');
+for (const marker of ['reinos-state-v1','canonicalState','checksum','fnv1a']) {
+  if (!determinism.includes(marker)) throw new Error(`Motor de checksum incompleto: falta ${marker}`);
+}
+for (const marker of ['scripts/test-determinism.mjs','scripts/browser-determinism.mjs','Check browser determinism']) {
+  if (!workflow.includes(marker)) throw new Error(`CI determinista incompleta: falta ${marker}`);
+}
+if (html.indexOf('determinism.js') > html.indexOf('game.js')) throw new Error('determinism.js debe cargarse antes de game.js');
 
-console.log('Validación estática, campaña, laboratorio de escenarios y repeticiones deterministas completadas.');
+console.log('Validación estática, Cartógrafo v2, checksum y prueba E2E declarados correctamente.');

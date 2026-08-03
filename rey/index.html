@@ -177,6 +177,23 @@
             <button id="scenarioSaveBtn" class="mini-btn" type="button">GUARDAR ESCENARIO</button>
           </div>
         </form>
+        <section class="scenario-map-editor" aria-labelledby="scenarioMapTitle">
+          <div class="scenario-map-heading">
+            <h3 id="scenarioMapTitle">MAPA VISUAL</h3>
+            <span id="scenarioPlacementCount">0/48 PIEZAS</span>
+          </div>
+          <div id="scenarioPalette" class="scenario-palette" aria-label="Paleta de piezas"></div>
+          <div class="scenario-map-stage">
+            <canvas id="scenarioMapCanvas" width="780" height="510" aria-label="Mapa editable de 2600 por 1700 unidades"></canvas>
+            <div class="scenario-map-legend"><span class="red">LEÓN</span><span class="blue">NELSON</span><span class="neutral">RECURSOS</span></div>
+          </div>
+          <div class="scenario-map-actions">
+            <button id="scenarioMapFromUnitsBtn" class="mini-btn" type="button">GENERAR FORMACIÓN</button>
+            <button id="scenarioMapMirrorBtn" class="mini-btn" type="button">REFLEJAR RIVAL</button>
+            <button id="scenarioMapClearBtn" class="mini-btn danger" type="button">LIMPIAR MAPA</button>
+          </div>
+          <p id="scenarioMapStatus" aria-live="polite"></p>
+        </section>
         <section class="scenario-library">
           <div class="scenario-library-header"><h3>BIBLIOTECA</h3><div class="scenario-library-tools">
             <label class="mini-btn file-button">IMPORTAR<input id="scenarioImportInput" type="file" accept="application/json,.json"></label>
@@ -210,6 +227,7 @@
   <noscript>REINOS necesita JavaScript para ejecutar la simulación.</noscript>
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" crossorigin="anonymous"></script>
   <script src="net.js"></script>
+  <script src="determinism.js"></script>
   <script src="game.js"></script>
   <script src="app.js"></script>
   <script src="chronicle.js"></script>

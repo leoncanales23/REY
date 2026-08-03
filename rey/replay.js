@@ -232,12 +232,16 @@
     }
     if (info) {
       info.style.display = active ? 'block' : 'none';
-      if (active) info.textContent = `REPETICIÓN · ${state.title || 'BATALLA'} · ${state.paused ? 'PAUSA' : `${state.speed || 1}×`}`;
+      if (active) {
+        const verified=state.verification?.matched?` · ✓ ${state.verification.actual}`:'';
+        info.textContent = `REPETICIÓN · ${state.title || 'BATALLA'} · ${state.paused ? 'PAUSA' : `${state.speed || 1}×`}${verified}`;
+      }
     }
   }
 
   window.addEventListener('reinos:replay-complete', (event) => storeReplay(event.detail));
   window.addEventListener('reinos:replay-state', (event) => updateReplayControls(event.detail || {}));
+  window.addEventListener('reinos:replay-verified', (event) => updateReplayControls({active:true,speed:1,title:'VERIFICADA',verification:event.detail}));
 
   byId('openReplayBtn')?.addEventListener('click', openDialog);
   byId('closeReplayBtn')?.addEventListener('click', closeDialog);
