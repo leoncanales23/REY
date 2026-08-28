@@ -85,3 +85,10 @@ Cada misión entrega hasta tres estrellas según objetivos secundarios, tiempo y
 El Editor de Escenarios v1 permite definir comandante, dificultad, edad, recursos, ejército inicial, eventos, semilla y condición de victoria. En Control de la Corona ambos castillos son inmortales y cualquiera de los dos reinos puede ganar sosteniendo el Bastión central. Los escenarios se sanitizan dentro del motor, pueden guardarse localmente, exportarse como JSON e importarse sin ejecutar código externo.
 
 Las batallas locales y las partidas alojadas registran una repetición compacta basada en semilla y órdenes humanas por tick. La IA y los eventos se reconstruyen con el generador determinista del motor, evitando bibliotecas de snapshots pesadas. La reproducción permite pausa y velocidades 1×, 2× y 4×.
+
+
+## Cartógrafo v2 y verificación determinista
+
+El editor visual permite colocar hasta 48 tropas, torres, cuarteles y nodos de recursos sobre una vista completa del campo. Las piezas se sanitizan en la interfaz y nuevamente dentro del motor; cuando el mapa visual está vacío, los escenarios v1 continúan usando sus contadores numéricos originales.
+
+Cada replay v2 guarda un checksum canónico del estado final bajo el motor `reinos-cartografo-v8`. Al terminar una reproducción, REINOS compara el estado reconstruido con el registrado y muestra una verificación explícita. La CI ejecuta además dos simulaciones completas con la misma semilla y exige el mismo checksum, junto con una tercera semilla que debe producir un estado diferente.

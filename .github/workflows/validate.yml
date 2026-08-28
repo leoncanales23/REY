@@ -8,6 +8,7 @@ permissions:
 jobs:
   static-validation:
     runs-on: ubuntu-latest
+    timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,6 +20,14 @@ jobs:
           node --check rey/net.js
           node --check rey/app.js
           node --check rey/chronicle.js
+          node --check rey/campaign.js
+          node --check rey/scenario.js
+          node --check rey/replay.js
+          node --check rey/determinism.js
           node --check rey/sw.js
       - name: Validate app shell and config
         run: node scripts/validate.mjs
+      - name: Check canonical checksum contract
+        run: node scripts/test-determinism.mjs
+      - name: Check browser determinism
+        run: node scripts/browser-determinism.mjs

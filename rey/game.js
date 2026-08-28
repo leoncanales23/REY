@@ -13,12 +13,16 @@
 const MAP_W = 2600, MAP_H = 1700;
 const SIM_DT = 1 / 20;          // paso de simulación (20 Hz)
 const SNAP_INT = 0.1;           // cada cuánto el host manda snapshot (10 Hz)
-const REPLAY_VERSION = 1;
+const REPLAY_VERSION = 2;
+const REPLAY_ENGINE = 'reinos-cartografo-v8';
 const REPLAY_COMMAND_LIMIT = 6000;
+const SCENARIO_PLACEMENT_LIMIT = 48;
+const SCENARIO_PLACEMENT_KINDS = new Set(['swordsman','archer','knight','tower','barracks','gold','wood']);
+const SCENARIO_NEUTRAL_KINDS = new Set(['gold','wood']);
 const SCENARIO_DEFAULTS = Object.freeze({
   title:'Frontera sin Nombre', side:'red', difficulty:'warrior', age:2,
   gold:600, wood:500, victoryMode:'standard', holdSeconds:45, worldEvents:true,
-  units:{swordsman:3,archer:2,knight:0}, seed:0,
+  units:{swordsman:3,archer:2,knight:0}, placements:[], seed:0,
 });
 
 const KINDS = ['castle','house','barracks','tower','villager','swordsman','archer','knight','mercenary','king'];
@@ -179,6 +183,7 @@ let replayPlayback = null;
 let replaySourceMode = null;
 let replayPaused = false;
 let replaySpeed = 1;
+let replayVerification = null;
 
 function boundedInt(value,min,max,fallback){
   const number=Number(value);
@@ -215,6 +220,16 @@ function normalizeScenario(input){
   const units=source.units && typeof source.units==='object' ? source.units : {};
   const victoryModes=new Set(['standard','castleOnly','crownHold']);
   const difficulties=new Set(Object.keys(AI_PROFILES));
+  const placements=[];
+  for(const item of (Array.isArray(source.placements)?source.placements:[]).slice(0,SCENARIO_PLACEMENT_LIMIT)){
+    if(!item || typeof item!=='object' || !SCENARIO_PLACEMENT_KINDS.has(item.kind)) continue;
+    const neutral=SCENARIO_NEUTRAL_KINDS.has(item.kind);
+    const side=neutral?null:(item.side==='blue'?'blue':item.side==='red'?'red':null);
+    if(!neutral && !side) continue;
+    const x=boundedInt(item.x,80,MAP_W-80,0), y=boundedInt(item.y,80,MAP_H-80,0);
+    if(!x || !y) continue;
+    placements.push({kind:item.kind,side,x,y});
+  }
   return {
     title:safeTitle(source.title,SCENARIO_DEFAULTS.title),
     side:source.side==='blue'?'blue':'red',
@@ -230,14 +245,28 @@ function normalizeScenario(input){
       archer:boundedInt(units.archer,0,12,SCENARIO_DEFAULTS.units.archer),
       knight:boundedInt(units.knight,0,6,SCENARIO_DEFAULTS.units.knight),
     },
+    placements,
     seed:source.seed?normalizeSeed(source.seed):0,
   };
 }
+function stateChecksum(state=G){
+  return globalThis.REINOS_DETERMINISM?.checksum?.(state)||null;
+}
+function verifyReplayChecksum(state){
+  if(mode!=='replay' || !replayPlayback?.record) return null;
+  const expected=replayPlayback.record.finalChecksum;
+  const actual=stateChecksum(state);
+  replayVerification={expected,actual,matched:!!expected&&!!actual&&expected===actual};
+  // REPLAY_FINAL_CHECKSUM: la reproducción demuestra igualdad del estado canónico final.
+  window.dispatchEvent(new CustomEvent('reinos:replay-verified',{detail:replayVerification}));
+  return replayVerification;
+}
 function normalizeReplay(input){
   // REPLAY_ENGINE_LOCK: una repetición solo se ejecuta con el motor que la produjo.
-  if(!input || typeof input!=='object' || input.version!==REPLAY_VERSION || input.engine!=='reinos-lab-v7') return null;
+  if(!input || typeof input!=='object' || input.version!==REPLAY_VERSION || input.engine!==REPLAY_ENGINE) return null;
   const finalTick=boundedInt(input.finalTick,1,1000000,0);
-  if(!finalTick) return null;
+  const finalChecksum=typeof input.finalChecksum==='string'&&/^[0-9a-f]{8}$/.test(input.finalChecksum)?input.finalChecksum:null;
+  if(!finalTick || !finalChecksum) return null;
   let encoded='';
   try{ encoded=JSON.stringify(input); }catch{ return null; }
   if(encoded.length>1500000 || !Array.isArray(input.commands) || input.commands.length>REPLAY_COMMAND_LIMIT) return null;
@@ -256,14 +285,14 @@ function normalizeReplay(input){
   const campaignId=kind==='campaign' && campaignMissionById(input.campaignId)?input.campaignId:null;
   return {
     version:REPLAY_VERSION,
-    engine:'reinos-lab-v7',
+    engine:REPLAY_ENGINE,
     sourceMode, kind,
     title:safeTitle(input.title,'Batalla sin título'),
     side:input.side==='blue'?'blue':'red',
     difficulty:AI_PROFILES[input.difficulty]?input.difficulty:(sourceMode==='host'?'human':'warrior'),
     seed:normalizeSeed(input.seed),
     campaignId, scenario, commands,
-    finalTick,
+    finalTick, finalChecksum,
     durationSeconds:Math.max(0,Number(input.durationSeconds)||0),
     finishedAt:Number(input.finishedAt)||Date.now(),
     winner:input.winner==='blue'?'blue':'red',
@@ -281,10 +310,10 @@ function beginReplayCapture(sourceMode){
   if(mode==='replay' || sourceMode==='client') return;
   const kind=campaignMissionId?'campaign':currentScenario?'scenario':sourceMode==='host'?'online':'solo';
   replayCapture={
-    version:REPLAY_VERSION, engine:'reinos-lab-v7', sourceMode, kind,
+    version:REPLAY_VERSION, engine:REPLAY_ENGINE, sourceMode, kind,
     title:replayTitle(sourceMode), side:mySide, difficulty:aiDifficulty, seed:simulationSeed,
     campaignId:campaignMissionId||null,
-    scenario:currentScenario?{...currentScenario,units:{...currentScenario.units}}:null,
+    scenario:currentScenario?{...currentScenario,units:{...currentScenario.units},placements:(currentScenario.placements||[]).map((item)=>({...item}))}:null,
     commands:[],
   };
 }
@@ -307,7 +336,7 @@ function applyReplayCommands(){
   }
 }
 function replayState(active=mode==='replay'){
-  return {active,paused:replayPaused,speed:replaySpeed,title:replayPlayback?.record?.title||''};
+  return {active,paused:replayPaused,speed:replaySpeed,title:replayPlayback?.record?.title||'',verification:replayVerification};
 }
 function emitReplayState(active=mode==='replay'){
   window.dispatchEvent(new CustomEvent('reinos:replay-state',{detail:replayState(active)}));
@@ -322,6 +351,7 @@ function finalizeReplayCapture(winner,state){
   const record={
     ...replayCapture,
     finalTick:state.tick||0,
+    finalChecksum:stateChecksum(state),
     durationSeconds:Math.max(0,state.time||0),
     finishedAt:Date.now(),
     winner,
@@ -524,6 +554,7 @@ function addNode(type, x, y, amount) {
 // ---------- Inicialización de partida ----------
 function initMap() {
   G = freshState();
+  ffRebuildT=0;
   AI.t=0; AI.lastBuild=0; AI.lastMercenary=-120; AI.mercenaryCampId=null;
   if(simulationMode()==='sp'){
     const profile=aiProfile();
@@ -1550,26 +1581,60 @@ function spawnScenarioForce(side,units){
   for(let i=0;i<units.archer;i++) list.push('archer');
   for(let i=0;i<units.knight;i++) list.push('knight');
   spawnCampaignForce(side,list);
-  const population=4+units.swordsman+units.archer+units.knight*2;
-  const houses=Math.max(0,Math.ceil((population-10)/5));
-  const castle=G.ents.find((entity)=>entity.side===side && entity.kind==='castle');
-  if(castle){
-    const direction=side==='red'?1:-1;
-    for(let i=0;i<houses;i++) spawn(side,'house',castle.x+direction*(95+i*42),castle.y+150,true);
+  ensureScenarioHousing(side);
+}
+function scenarioPointAllowed(item){
+  const radius=['tower','barracks'].includes(item.kind)?DEFS[item.kind].r:SCENARIO_NEUTRAL_KINDS.has(item.kind)?(item.kind==='gold'?22:14):14;
+  const castles=G.ents.filter((entity)=>entity.kind==='castle');
+  if(castles.some((castle)=>dist(item.x,item.y,castle.x,castle.y)<radius+90)) return false;
+  if(G.objectives.some((objective)=>dist(item.x,item.y,objective.x,objective.y)<radius+OBJECTIVE_RADIUS+8)) return false;
+  if(G.mercenaryCamps.some((camp)=>dist(item.x,item.y,camp.x,camp.y)<radius+58)) return false;
+  if(['tower','barracks','gold','wood'].includes(item.kind)) return validPlacement(item.x,item.y,radius);
+  if(G.nodes.some((node)=>dist(item.x,item.y,node.x,node.y)<radius+node.r+6)) return false;
+  if(G.ents.some((entity)=>entity.building&&dist(item.x,item.y,entity.x,entity.y)<radius+DEFS[entity.kind].r+6)) return false;
+  return !G.ents.some((entity)=>!entity.building&&dist(item.x,item.y,entity.x,entity.y)<DEFS[entity.kind].r+radius+2);
+}
+function ensureScenarioHousing(side){
+  const population=G.ents.reduce((total,entity)=>total+(entity.side===side&&!entity.building&&!DEFS[entity.kind].hero?(entity.kind==='knight'?2:1):0),0);
+  const existing=G.ents.filter((entity)=>entity.side===side&&entity.kind==='house').length;
+  const needed=Math.max(0,Math.ceil((population-(10+existing*DEFS.house.pop))/DEFS.house.pop));
+  const castle=G.ents.find((entity)=>entity.side===side&&entity.kind==='castle');
+  if(!castle) return;
+  const direction=side==='red'?1:-1;
+  for(let index=0;index<needed;index++){
+    const x=castle.x+direction*(110+(existing+index)*48), y=castle.y+170;
+    if(validPlacement(x,y,DEFS.house.r)) spawn(side,'house',x,y,true);
   }
+}
+function applyScenarioPlacements(scenario){
+  const layout=scenario.placements||[];
+  if(!layout.length) return 0;
+  let accepted=0;
+  // VISUAL_SCENARIO_EDITOR_V2: cada pieza importada se valida otra vez dentro del motor.
+  for(const item of layout){
+    if(!scenarioPointAllowed(item)) continue;
+    if(item.kind==='gold' || item.kind==='wood') addNode(item.kind,item.x,item.y,item.kind==='gold'?1200:320);
+    else spawn(item.side,item.kind,item.x,item.y,true);
+    accepted++;
+  }
+  if(accepted){ ensureScenarioHousing('red'); ensureScenarioHousing('blue'); }
+  return accepted;
 }
 function applyScenarioSetup(config){
   const scenario=normalizeScenario(config);
   currentScenario=scenario;
-  G.scenario={...scenario,units:{...scenario.units},hold:0,holdBySide:{red:0,blue:0},completed:false};
+  G.scenario={...scenario,units:{...scenario.units},placements:(scenario.placements||[]).map((item)=>({...item})),hold:0,holdBySide:{red:0,blue:0},completed:false};
   const own=G.res[mySide];
   own.age=scenario.age; own.g=scenario.gold; own.w=scenario.wood;
-  spawnScenarioForce(mySide,scenario.units);
+  const appliedPlacements=applyScenarioPlacements(scenario);
+  G.scenario.appliedPlacements=appliedPlacements;
+  // SCENARIO_REJECTED_LAYOUT_FALLBACK: un JSON totalmente rechazado conserva un ejército jugable.
+  if(!appliedPlacements) spawnScenarioForce(mySide,scenario.units);
   if(!scenario.worldEvents){
     G.worldEvent.id=null; G.worldEvent.warning=null; G.worldEvent.t=0; G.worldEvent.warningT=0; G.worldEvent.nextAt=1000000000;
   }
   recalcPop();
-  toast(`🗺 LABORATORIO · ${scenario.title}`);
+  toast(`🗺 CARTÓGRAFO · ${scenario.title} · ${appliedPlacements}/${(scenario.placements||[]).length} piezas aceptadas`);
 }
 function scenarioObjectiveText(state=activeState()){
   const scenario=state?.scenario;
@@ -3136,7 +3201,7 @@ function serialize(){
     mercenaryCamps:G.mercenaryCamps.map((camp)=>({...camp,cooldown:Math.round(camp.cooldown)})),
     worldEvent:{...G.worldEvent,t:Math.round(G.worldEvent.t),warningT:Math.round(G.worldEvent.warningT)},
     stats:{red:{...G.stats.red},blue:{...G.stats.blue}},
-    scenario:G.scenario?{...G.scenario,units:{...G.scenario.units}}:null, seed:G.seed,
+    scenario:G.scenario?{...G.scenario,units:{...G.scenario.units},placements:(G.scenario.placements||[]).map((item)=>({...item}))}:null, seed:G.seed,
     ents: G.ents.map(e=>({
       id:e.id, side:e.side, kind:e.kind,
       x:Math.round(e.x), y:Math.round(e.y),
@@ -3177,7 +3242,7 @@ function startGame(opts){
   campaignOutcomeSent=mode==='replay';
   lastWorldAnnouncementSerial=0;
   aiDifficulty=AI_PROFILES[opts.difficulty]?opts.difficulty:'warrior';
-  replayPaused=false; replaySpeed=1;
+  replayPaused=false; replaySpeed=1; replayVerification=null;
   resetSimulationRng(opts.seed||replayRecord?.seed||currentScenario?.seed||newSimulationSeed());
 
   SFX.init(); SFX.resume();
@@ -3232,6 +3297,13 @@ function showEnd(winner){
     document.getElementById('endSub').textContent='El estado no alcanzó el desenlace registrado dentro del tick final permitido.';
     document.getElementById('endScreen').style.display='flex'; emitReplayState(false); return;
   }
+  const replayCheck=mode==='replay'?verifyReplayChecksum(state):null;
+  if(replayCheck && !replayCheck.matched){
+    document.getElementById('endTitle').textContent='REPETICIÓN INCOMPATIBLE';
+    document.getElementById('endTitle').style.color='#ff6f6f';
+    document.getElementById('endSub').textContent=`Checksum esperado ${replayCheck.expected} · reconstruido ${replayCheck.actual||'sin estado'}.`;
+    document.getElementById('endScreen').style.display='flex'; emitReplayState(false); return;
+  }
   const campaignResult=finalizeCampaignOutcome(winner,state);
   finalizeReplayCapture(winner,state);
   if(campaignResult){
@@ -3250,8 +3322,49 @@ function showEnd(winner){
       ? (won?`La ${FACTIONS[mySide].name} sostuvo dos Bastiones y proclamó supremacía.`:`${COLOR[winner].name} dominó los Bastiones antes de que pudieras recuperarlos.`)
       : (won?`El reino de ${COLOR[mySide].name} derribó el castillo enemigo.`:`El reino de ${COLOR[winner].name} arrasó tu castillo.`);
   }
+  if(replayCheck?.matched) document.getElementById('endSub').textContent+=` · ✓ CHECKSUM ${replayCheck.actual}`;
   document.getElementById('endScreen').style.display='flex';
   if(mode==='replay') emitReplayState(false);
+}
+
+function runDeterminismTrial(seed){
+  mode='sp'; mySide='red'; enemySide='blue'; aiDifficulty='warrior';
+  campaignMissionId=null; campaignOutcomeSent=false; currentScenario=null;
+  replayCapture=null; replayPlayback=null; replaySourceMode=null; replayVerification=null;
+  resetSimulationRng(seed); initMap();
+  applyScenarioSetup(normalizeScenario({
+    title:'Sonda determinista',side:'red',difficulty:'warrior',age:2,gold:700,wood:600,
+    victoryMode:'standard',worldEvents:true,units:{swordsman:0,archer:0,knight:0},seed,
+    placements:[
+      {kind:'swordsman',side:'red',x:620,y:760},
+      {kind:'archer',side:'red',x:660,y:810},
+      {kind:'swordsman',side:'blue',x:1980,y:760},
+      {kind:'archer',side:'blue',x:1940,y:810},
+      {kind:'gold',x:1050,y:620},{kind:'wood',x:1050,y:1080},
+    ],
+  }));
+  const redArmy=G.ents.filter((entity)=>entity.side==='red'&&!entity.building&&entity.kind!=='villager'&&entity.kind!=='king');
+  for(const entity of redArmy) applyCommand({type:'attackmove',ids:[entity.id],x:MAP_W/2,y:MAP_H/2},'red');
+  for(let index=0;index<360 && !G.winner;index++){
+    if(index===80){
+      const king=G.ents.find((entity)=>entity.side==='red'&&entity.kind==='king');
+      if(king) useCommanderAbility('red','warCry',king.id,king.x,king.y);
+    }
+    step(SIM_DT);
+  }
+  return {checksum:stateChecksum(G),tick:G.tick,winner:G.winner};
+}
+function runDeterminismProbe(){
+  const originalPlay=SFX.play; SFX.play=()=>{};
+  try{
+    const first=runDeterminismTrial(0x51a7c0de);
+    const second=runDeterminismTrial(0x51a7c0de);
+    const different=runDeterminismTrial(0x51a7c0df);
+    const ok=!!first.checksum&&first.checksum===second.checksum&&first.checksum!==different.checksum;
+    return {ok,first,second,different,engine:REPLAY_ENGINE};
+  } finally {
+    SFX.play=originalPlay; running=false;
+  }
 }
 
 // Exponer a la UI (index.html)
@@ -3273,6 +3386,8 @@ window.REINOS = {
   },
 
   getScenarioDefaults(){ return normalizeScenario(SCENARIO_DEFAULTS); },
+  getStateChecksum(){ return stateChecksum(renderState()); },
+  runDeterminismProbe(){ return runDeterminismProbe(); },
   normalizeScenario(config){ return normalizeScenario(config); },
   startScenario(config){
     const scenario=normalizeScenario(config);
@@ -3386,6 +3501,22 @@ window.REINOS = {
     location.reload();
   },
 };
+
+
+if(new URLSearchParams(location.search).get('determinism-test')==='1'){
+  setTimeout(()=>{
+    const output=document.createElement('pre'); output.id='determinismProbe';
+    try{
+      const result=window.REINOS.runDeterminismProbe();
+      document.documentElement.dataset.determinism=result.ok?'pass':'fail';
+      output.textContent=JSON.stringify(result);
+    } catch(error){
+      document.documentElement.dataset.determinism='fail';
+      output.textContent=JSON.stringify({ok:false,error:String(error?.stack||error)});
+    }
+    document.body.appendChild(output);
+  },0);
+}
 
 // init
 resize();
