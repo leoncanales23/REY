@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#05080a">
-<meta name="description" content="REINOS, estrategia en tiempo real para jugar solo o contra un rival por conexión P2P.">
+<meta name="description" content="REINOS, estrategia en tiempo real para jugar solo o contra un rival por conexion P2P.">
 <meta name="color-scheme" content="dark">
-<title>REINOS — Nelson vs León</title>
+<title>REINOS - Nelson vs Leon</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/reinos-192.png" sizes="192x192">
 <link rel="apple-touch-icon" href="icons/reinos-192.png">
@@ -21,95 +21,95 @@
   <div id="menu">
     <div class="logo">
       <h1>REINOS</h1>
-      <div class="sub">NELSON &nbsp;⚔&nbsp; LEÓN</div>
-      <div class="tag">// estrategia en tiempo real · edición next level //</div>
+      <div class="sub">NELSON &nbsp;vs&nbsp; LEON</div>
+      <div class="tag">// estrategia en tiempo real - edicion next level //</div>
     </div>
     <div class="card">
       <div class="status-row">
         <span id="networkBadge" class="badge" data-state="online">RED DISPONIBLE</span>
-        <span class="badge">P2P · HOST AUTORITATIVO</span>
+        <span class="badge">P2P - HOST AUTORITATIVO</span>
       </div>
       <h2>UN JUGADOR</h2>
       <div class="difficulty-picker">
         <label for="difficultySelect">DIFICULTAD DE LA IA</label>
         <select id="difficultySelect">
-          <option value="explorer">Explorador · aprende y respira</option>
-          <option value="warrior" selected>Guerrero · batalla equilibrada</option>
-          <option value="conqueror">Conquistador · economía y ataques feroces</option>
+          <option value="explorer">Explorador - aprende y respira</option>
+          <option value="warrior" selected>Guerrero - batalla equilibrada</option>
+          <option value="conqueror">Conquistador - economia y ataques feroces</option>
         </select>
       </div>
       <div class="row">
-        <button class="btn red" onclick="REINOS.startSolo('red', document.getElementById('difficultySelect').value)">JUGAR COMO LEÓN<small>Legión del Rugido · melee + aura real</small></button>
-        <button class="btn blue" onclick="REINOS.startSolo('blue', document.getElementById('difficultySelect').value)">JUGAR COMO NELSON<small>Orden del Horizonte · alcance + economía</small></button>
+        <button class="btn red" onclick="REINOS.startSolo('red', document.getElementById('difficultySelect').value)">JUGAR COMO LEON<small>Legion del Rugido - melee + aura real</small></button>
+        <button class="btn blue" onclick="REINOS.startSolo('blue', document.getElementById('difficultySelect').value)">JUGAR COMO NELSON<small>Orden del Horizonte - alcance + economia</small></button>
       </div>
-      <div class="divider">— · · · —</div>
-      <h2>CAMPAÑA DE LOS DOS REYES</h2>
+      <div class="divider">- - - -</div>
+      <h2>CAMPANA DE LOS DOS REYES</h2>
       <div class="row">
-        <button id="openCampaignBtn" class="btn campaign" type="button">ABRIR CAMPAÑA<small>3 actos · progreso persistente · 9 estrellas</small></button>
+        <button id="openCampaignBtn" class="btn campaign" type="button">ABRIR CAMPANA<small>3 actos - progreso persistente - 9 estrellas</small></button>
       </div>
-      <div class="divider">— · · · —</div>
+      <div class="divider">- - - -</div>
       <h2>LABORATORIO DEL REINO</h2>
       <div class="row">
-        <button id="openScenarioBtn" class="btn scenario" type="button">EDITOR DE ESCENARIOS<small>reglas, ejércitos, semillas e importación JSON</small></button>
-        <button id="openReplayBtn" class="btn replay" type="button">REPETICIONES<small>semilla + órdenes · biblioteca local</small></button>
+        <button id="openScenarioBtn" class="btn scenario" type="button">EDITOR DE ESCENARIOS<small>reglas, ejercitos, semillas e importacion JSON</small></button>
+        <button id="openReplayBtn" class="btn replay" type="button">REPETICIONES<small>semilla + ordenes - biblioteca local</small></button>
       </div>
-      <div class="divider">— · · · —</div>
+      <div class="divider">- - - -</div>
       <h2>DUELO ONLINE</h2>
       <div class="row">
-        <button class="btn" onclick="REINOS.hostGame()">CREAR SALA<small>LEÓN · Legión del Rugido</small></button>
+        <button class="btn" onclick="REINOS.hostGame()">CREAR SALA<small>LEON - Legion del Rugido</small></button>
       </div>
       <div id="hostWait" aria-live="polite">
-        Código de sala: <span id="roomCode">— — —</span><br>
+        Codigo de sala: <span id="roomCode">- - -</span><br>
         <span id="netStatus">listo</span><br>
-        <button id="copyInviteMenu" class="mini-btn" type="button">COPIAR INVITACIÓN</button>
+        <button id="copyInviteMenu" class="mini-btn" type="button">COPIAR INVITACION</button>
         <span class="hint">Puedes reunir recursos mientras llega el rival.</span>
       </div>
       <div class="row join-row">
-        <label class="sr-only" for="joinInput">Código de sala</label>
+        <label class="sr-only" for="joinInput">Codigo de sala</label>
         <input class="code" id="joinInput" placeholder="REINO-ABC234" maxlength="12" autocomplete="off" spellcheck="false">
-        <button class="btn blue" onclick="REINOS.joinGame(document.getElementById('joinInput').value)">UNIRME<small>NELSON · Orden del Horizonte</small></button>
+        <button class="btn blue" onclick="REINOS.joinGame(document.getElementById('joinInput').value)">UNIRME<small>NELSON - Orden del Horizonte</small></button>
       </div>
       <div id="netStatus2" aria-live="polite"></div>
       <div class="menu-tools">
         <button id="fullscreenBtn" class="mini-btn" type="button">PANTALLA COMPLETA</button>
         <button id="installBtn" class="mini-btn" type="button" hidden>INSTALAR JUEGO</button>
-        <button id="openChronicleBtn" class="mini-btn" type="button">CRÓNICA DE GUERRA</button>
+        <button id="openChronicleBtn" class="mini-btn" type="button">CRONICA DE GUERRA</button>
       </div>
-      <div class="hint">Derriba el castillo, proclama supremacía o gira la batalla con habilidades de comandante, contratos mercenarios y eventos mundiales.</div>
+      <div class="hint">Derriba el castillo, proclama supremacia o gira la batalla con habilidades de comandante, contratos mercenarios y eventos mundiales.</div>
     </div>
   </div>
   <div id="hud">
-    <div class="stat" id="p1name">LEÓN</div>
-    <div class="stat faction" id="factionInfo">LEGIÓN DEL RUGIDO</div>
+    <div class="stat" id="p1name">LEON</div>
+    <div class="stat faction" id="factionInfo">LEGION DEL RUGIDO</div>
     <div class="stat age" id="ageInfo">EDAD DE ALDEA</div>
-    <div class="stat gold">🪙 <span id="gold">0</span></div>
-    <div class="stat wood">🪵 <span id="wood">0</span></div>
-    <div class="stat pop">👥 <span id="pop">0/10</span></div>
+    <div class="stat gold">&#127873; <span id="gold">0</span></div>
+    <div class="stat wood">&#129717; <span id="wood">0</span></div>
+    <div class="stat pop">&#128101; <span id="pop">0/10</span></div>
     <div class="stat objectives" id="objectiveInfo">BASTIONES 0/3</div>
     <div class="stat event" id="eventInfo">MUNDO ESTABLE</div>
     <div class="stat" id="campaignInfo">ACTO I</div>
     <div class="stat" id="scenarioInfo">ESCENARIO</div>
-    <div class="stat" id="replayInfo">REPETICIÓN</div>
+    <div class="stat" id="replayInfo">REPETICION</div>
     <div class="stat" id="enemyInfo"></div>
   </div>
   <div id="matchTools" hidden>
     <span id="connectionBadge" class="badge" data-state="waiting">SOLO</span>
     <button id="copyInviteHud" class="hud-btn" type="button">INVITAR</button>
-    <button id="replayPauseBtn" class="hud-btn" type="button" hidden aria-label="Pausar repetición">Ⅱ</button>
-    <button id="replaySpeedBtn" class="hud-btn" type="button" hidden aria-label="Velocidad de repetición">1×</button>
-    <button id="fullscreenHud" class="hud-btn" type="button" aria-label="Pantalla completa">⛶</button>
+    <button id="replayPauseBtn" class="hud-btn" type="button" hidden aria-label="Pausar repeticion">II</button>
+    <button id="replaySpeedBtn" class="hud-btn" type="button" hidden aria-label="Velocidad de repeticion">1x</button>
+    <button id="fullscreenHud" class="hud-btn" type="button" aria-label="Pantalla completa">&#9974;</button>
   </div>
-  <div id="panel"><div id="selInfo">— sin selección —</div><div id="cmds"></div></div>
-  <div class="controls">WASD / flechas / bordes: mover cámara<br>Click izq: seleccionar · arrastrar: caja<br>Click der: mover / atacar / recolectar<br>Aldeano → Q casa · E cuartel · R torre<br>Castillo y cuartel → edades y tecnologías<br>Bastiones → controla 2 durante 75s<br>Rey → habilidad y contratos mercenarios<br>Eventos → aviso global antes de activarse<br>F flow field · G niebla de guerra</div>
+  <div id="panel"><div id="selInfo">- sin seleccion -</div><div id="cmds"></div></div>
+  <div class="controls">WASD / flechas / bordes: mover camara<br>Click izq: seleccionar - arrastrar: caja<br>Click der: mover / atacar / recolectar<br>Aldeano: Q casa, E cuartel, R torre<br>Castillo y cuartel: edades y tecnologias<br>Bastiones: controla 2 durante 75s<br>Rey: habilidad y contratos mercenarios<br>Eventos: aviso global antes de activarse<br>F flow field, G niebla de guerra</div>
   <div id="endScreen">
     <div id="endTitle">FIN</div>
     <div id="endSub"></div>
     <div id="battleSummary" aria-live="polite"></div>
     <div class="end-campaign-actions">
-      <button id="campaignRetryBtn" class="mini-btn" type="button" hidden>REINTENTAR MISIÓN</button>
-      <button id="campaignNextBtn" class="mini-btn" type="button" hidden>SIGUIENTE MISIÓN</button>
+      <button id="campaignRetryBtn" class="mini-btn" type="button" hidden>REINTENTAR MISION</button>
+      <button id="campaignNextBtn" class="mini-btn" type="button" hidden>SIGUIENTE MISION</button>
     </div>
-    <button class="btn" style="max-width:240px;" onclick="REINOS.restart()">VOLVER AL MENÚ</button>
+    <button class="btn" style="max-width:240px;" onclick="REINOS.restart()">VOLVER AL MENU</button>
   </div>
 
   <dialog id="chronicleDialog" class="chronicle-dialog" aria-labelledby="chronicleTitle">
@@ -117,14 +117,14 @@
       <div class="chronicle-header">
         <div>
           <span class="chronicle-kicker">ARCHIVO DEL REINO</span>
-          <h2 id="chronicleTitle">CRÓNICA DE GUERRA</h2>
+          <h2 id="chronicleTitle">CRONICA DE GUERRA</h2>
         </div>
-        <button id="closeChronicleBtn" class="hud-btn" type="button" aria-label="Cerrar crónica">✕</button>
+        <button id="closeChronicleBtn" class="hud-btn" type="button" aria-label="Cerrar cronica">x</button>
       </div>
       <div id="chronicleStats" class="chronicle-stats"></div>
       <div id="chronicleList" class="chronicle-list"></div>
       <div class="chronicle-actions">
-        <button id="clearChronicleBtn" class="mini-btn danger" type="button">BORRAR CRÓNICA</button>
+        <button id="clearChronicleBtn" class="mini-btn danger" type="button">BORRAR CRONICA</button>
       </div>
     </div>
   </dialog>
@@ -133,37 +133,36 @@
     <div class="campaign-shell">
       <div class="campaign-header">
         <div>
-          <span class="campaign-kicker">CRÓNICA JUGABLE</span>
-          <h2 id="campaignTitle">CAMPAÑA DE LOS DOS REYES</h2>
+          <span class="campaign-kicker">CRONICA JUGABLE</span>
+          <h2 id="campaignTitle">CAMPANA DE LOS DOS REYES</h2>
         </div>
-        <button id="closeCampaignBtn" class="hud-btn" type="button" aria-label="Cerrar campaña">✕</button>
+        <button id="closeCampaignBtn" class="hud-btn" type="button" aria-label="Cerrar campana">x</button>
       </div>
       <div id="campaignProgress" class="campaign-progress"></div>
       <div id="campaignMissions" class="campaign-missions"></div>
       <div class="campaign-actions">
-        <button id="clearCampaignBtn" class="mini-btn danger" type="button">REINICIAR CAMPAÑA</button>
+        <button id="clearCampaignBtn" class="mini-btn danger" type="button">REINICIAR CAMPANA</button>
         <button class="mini-btn" type="button" onclick="document.getElementById('campaignDialog').close()">CERRAR</button>
       </div>
     </div>
   </dialog>
 
-
   <dialog id="scenarioDialog" class="scenario-dialog" aria-labelledby="scenarioDialogTitle">
     <div class="scenario-shell">
       <div class="scenario-header">
-        <div><span class="scenario-kicker">CARTOGRAFÍA TÁCTICA</span><h2 id="scenarioDialogTitle">EDITOR DE ESCENARIOS</h2></div>
-        <button id="closeScenarioBtn" class="hud-btn" type="button" aria-label="Cerrar editor">✕</button>
+        <div><span class="scenario-kicker">CARTOGRAFIA TACTICA</span><h2 id="scenarioDialogTitle">EDITOR DE ESCENARIOS</h2></div>
+        <button id="closeScenarioBtn" class="hud-btn" type="button" aria-label="Cerrar editor">x</button>
       </div>
       <div class="scenario-layout">
         <form id="scenarioForm" class="scenario-form" onsubmit="return false">
           <h3>REGLAS DEL CAMPO</h3>
           <div class="scenario-field wide"><label for="scenarioTitle">NOMBRE</label><input id="scenarioTitle" maxlength="48" value="Frontera sin Nombre"></div>
-          <div class="scenario-field"><label for="scenarioSide">COMANDANTE</label><select id="scenarioSide"><option value="red">León</option><option value="blue">Nelson</option></select></div>
+          <div class="scenario-field"><label for="scenarioSide">COMANDANTE</label><select id="scenarioSide"><option value="red">Leon</option><option value="blue">Nelson</option></select></div>
           <div class="scenario-field"><label for="scenarioDifficulty">IA</label><select id="scenarioDifficulty"><option value="explorer">Explorador</option><option value="warrior" selected>Guerrero</option><option value="conqueror">Conquistador</option></select></div>
           <div class="scenario-field"><label for="scenarioAge">EDAD INICIAL</label><select id="scenarioAge"><option value="1">Aldea</option><option value="2" selected>Fortaleza</option><option value="3">Imperial</option></select></div>
-          <div class="scenario-field"><label for="scenarioVictoryMode">VICTORIA</label><select id="scenarioVictoryMode"><option value="standard">Castillo o supremacía</option><option value="castleOnly">Solo castillo</option><option value="crownHold">Sostener la Corona · castillos inmortales</option></select></div>
+          <div class="scenario-field"><label for="scenarioVictoryMode">VICTORIA</label><select id="scenarioVictoryMode"><option value="standard">Castillo o supremacia</option><option value="castleOnly">Solo castillo</option><option value="crownHold">Sostener la Corona - castillos inmortales</option></select></div>
           <div id="scenarioHoldRow" class="scenario-field"><label for="scenarioHoldSeconds">SEGUNDOS EN LA CORONA</label><input id="scenarioHoldSeconds" type="number" min="20" max="120" value="45"></div>
-          <div class="scenario-field"><label for="scenarioSeed">SEMILLA, VACÍA = AUTOMÁTICA</label><input id="scenarioSeed" type="number" min="1" max="4294967295"></div>
+          <div class="scenario-field"><label for="scenarioSeed">SEMILLA, VACIA = AUTOMATICA</label><input id="scenarioSeed" type="number" min="1" max="4294967295"></div>
           <div class="scenario-field"><label for="scenarioGold">ORO INICIAL</label><input id="scenarioGold" type="number" min="0" max="3000" value="600"></div>
           <div class="scenario-field"><label for="scenarioWood">MADERA INICIAL</label><input id="scenarioWood" type="number" min="0" max="3000" value="500"></div>
           <div class="scenario-field wide scenario-check"><input id="scenarioWorldEvents" type="checkbox" checked><label for="scenarioWorldEvents">EVENTOS MUNDIALES ACTIVOS</label></div>
@@ -193,7 +192,7 @@
     <div class="replay-shell">
       <div class="replay-header">
         <div><span class="replay-kicker">ARCHIVO DEL ESTRATEGA</span><h2 id="replayDialogTitle">REPETICIONES DE BATALLA</h2></div>
-        <button id="closeReplayBtn" class="hud-btn" type="button" aria-label="Cerrar repeticiones">✕</button>
+        <button id="closeReplayBtn" class="hud-btn" type="button" aria-label="Cerrar repeticiones">x</button>
       </div>
       <div id="replaySummary" class="replay-summary"></div>
       <div id="replayList" class="replay-list"></div>
@@ -207,7 +206,28 @@
     </div>
   </dialog>
 
-  <noscript>REINOS necesita JavaScript para ejecutar la simulación.</noscript>
+  <!-- OVERLAY INVITACION MULTIJUGADOR -->
+  <div id="inviteOverlay" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(3,8,5,0.90);flex-direction:column;align-items:center;justify-content:center;gap:18px;">
+    <div style="width:min(480px,92vw);background:rgba(8,18,14,0.98);border:2px solid #1c3a2b;border-radius:8px;padding:28px 26px;box-shadow:0 0 60px rgba(0,255,120,0.10);">
+      <div style="font-family:'Press Start 2P',monospace;font-size:12px;color:#7CFC00;margin-bottom:18px;">SALA CREADA - TU ERES LEON</div>
+      <div style="text-align:center;margin-bottom:18px;">
+        <div style="font-size:15px;color:#5e8a72;margin-bottom:8px;">CODIGO DE SALA</div>
+        <div id="overlayCode" style="font-family:'Press Start 2P',monospace;font-size:30px;color:#7CFC00;letter-spacing:5px;padding:12px 0;"></div>
+        <div id="overlayStatus" style="color:#ffcf4a;font-size:17px;margin-top:6px;">Esperando a Nelson...</div>
+      </div>
+      <div style="background:#0c1a13;border:1px dashed #1c3a2b;border-radius:4px;padding:10px 14px;margin-bottom:16px;">
+        <div style="font-size:13px;color:#5e8a72;margin-bottom:6px;">LINK DE INVITACION</div>
+        <div id="overlayLink" style="font-size:13px;color:#9fd9b4;word-break:break-all;line-height:1.6;"></div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn" id="overlayCopyBtn" onclick="REINOS.copyLink()" style="flex:1;font-size:20px;padding:14px;">COPIAR LINK<small>enviaselo al primo</small></button>
+        <button class="btn" id="overlayShareBtn" onclick="REINOS.shareLink()" style="flex:1;font-size:20px;padding:14px;display:none">COMPARTIR<small>enviaselo al primo</small></button>
+      </div>
+      <button class="btn" onclick="REINOS.closeInvite()" style="margin-top:14px;width:100%;font-size:18px;border-color:#3a5a3a;color:#5e8a72;">IR AL JUEGO<small>el juego ya corre, Nelson se une cuando quiera</small></button>
+    </div>
+  </div>
+
+  <noscript>REINOS necesita JavaScript para ejecutar la simulacion.</noscript>
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" crossorigin="anonymous"></script>
   <script src="net.js"></script>
   <script src="game.js"></script>
