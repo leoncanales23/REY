@@ -135,6 +135,9 @@ const WORLD_EVENT_DEFS = {
   abundance: {name:'TIEMPO DE ABUNDANCIA', duration:38, note:'+25% velocidad de recolección'},
   warMarket: {name:'MERCADO DE GUERRA', duration:34, note:'contratos mercenarios -35% y campamentos acelerados'},
   blackFog: {name:'NIEBLA NEGRA', duration:30, note:'visión global reducida; Ojo del Horizonte atraviesa la oscuridad'},
+  plague: {name:'LA GRAN PLAGA', duration:28, note:'aldeas sin murallas: villagers reciben 15% más daño'},
+  tradeTruce: {name:'TREGUA COMERCIAL', duration:32, note:'ambos bandos generan +40% de oro pasivo mientras dura'},
+  arrowStorm: {name:'TORMENTA DE FLECHAS', duration:25, note:'arqueros y torres disparan 30% más rápido'},
 };
 const WORLD_EVENT_IDS = Object.keys(WORLD_EVENT_DEFS);
 const WORLD_EVENT_WARNING = 12;
@@ -1674,6 +1677,9 @@ function step(dt){
   G.time += dt; G.tick++;
   stepResearch(dt);
   stepWorldEvents(dt);
+  if(worldEventActive('tradeTruce',G)){
+    for(const side of ['red','blue']) G.res[side].g += 4*dt;
+  }
   stepCommanderStates(dt);
   stepMercenaryCamps(dt);
   stepObjectives(dt);
@@ -1709,7 +1715,7 @@ function step(dt){
         e.cd-=dt;
         let tgt=entById(e.targetId);
         if(!tgt||tgt.hp<=0||dist(e.x,e.y,tgt.x,tgt.y)>range){ tgt=nearestEnemy(e.side,e.x,e.y,range); e.targetId=tgt?tgt.id:0; }
-        if(tgt&&e.cd<=0){ shoot(e,tgt,attackFor(e),true); e.cd=d.cd; }
+        if(tgt&&e.cd<=0){ shoot(e,tgt,attackFor(e),true); e.cd=worldEventActive('arrowStorm')?d.cd*0.7:d.cd; }
       }
       continue;
     }
@@ -1792,9 +1798,11 @@ function stepUnit(e, dt){
       e.moving=false;
       if(e.cd<=0){
         const atk=attackFor(e)*(e.atkMul||1);
-        if(d.ranged) shoot(e,tgt,atk,false);
-        else damage(tgt, atk, e.side);
-        e.cd=d.cd;
+        if(d.ranged){
+          const arrowBoost=worldEventActive('arrowStorm')&&e.kind==='archer'?1.3:1;
+          shoot(e,tgt,atk*arrowBoost,false);
+        } else damage(tgt, atk, e.side);
+        e.cd=worldEventActive('arrowStorm')&&d.ranged?d.cd*0.7:d.cd;
       }
     } else {
       moveToward(e, tgt.x, tgt.y, dt);
@@ -1925,6 +1933,7 @@ function shoot(from, tgt, dmg, fromBuilding){
 function damage(t, amount, fromSide){
   if(G.scenario?.victoryMode==='crownHold' && t.kind==='castle') return;
   if(t.hp<=0) return;
+  if(worldEventActive('plague') && t.kind==='villager') amount*=1.15;
   t.hp -= amount;
   spawnParticles(t.x, t.y, 'hit');
   if(mode!=='client') SFX.play('hit');
@@ -2660,7 +2669,10 @@ function drawMinimap(S){
   for(const n of S.nodes){ ctx.fillStyle=n.type==='gold'?'#caa12e':'#3f8a43'; ctx.fillRect(x0+n.x*sx-1,y0+n.y*sy-1,2,2); }
   for(const objective of (S.objectives||[])){ ctx.fillStyle=objective.owner?COLOR[objective.owner].main:'#ffe9a8'; ctx.fillRect(x0+objective.x*sx-2,y0+objective.y*sy-2,4,4); }
   for(const camp of (S.mercenaryCamps||[])){ ctx.fillStyle=camp.cooldown<=0?'#f0c46a':'#6f5b3f'; ctx.fillRect(x0+camp.x*sx-2,y0+camp.y*sy-2,4,4); }
-  for(const e of S.ents){ ctx.fillStyle=COLOR[e.side].main; const s=e.building?3:2; ctx.fillRect(x0+e.x*sx-s/2,y0+e.y*sy-s/2,s,s); }
+  for(const e of S.ents){
+    if(fogEnabled && e.side!==mySide && FOG.at(e.x,e.y)<2) continue;
+    ctx.fillStyle=COLOR[e.side].main; const s=e.building?3:2; ctx.fillRect(x0+e.x*sx-s/2,y0+e.y*sy-s/2,s,s);
+  }
   // viewport
   ctx.strokeStyle='#fff'; ctx.lineWidth=1;
   ctx.strokeRect(x0+cam.x*sx, y0+cam.y*sy, view.w*sx, view.h*sy);
