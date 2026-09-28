@@ -131,8 +131,8 @@
 
     if (typeof REINOS.startCampaign === 'function') {
       const originalCampaign = REINOS.startCampaign.bind(REINOS);
-      REINOS.startCampaign = (id) => {
-        const started = originalCampaign(id);
+      REINOS.startCampaign = (id, options) => {
+        const started = originalCampaign(id, options);
         if (started !== false) {
           showMatchShell();
           setConnectionState('CAMPAÑA', true);

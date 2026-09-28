@@ -2,6 +2,9 @@ import { readFile, access } from 'node:fs/promises';
 import { constants } from 'node:fs';
 
 const required = [
+  'rey/world.js',
+  'rey/world-map.js',
+  'rey/world.css',
   'rey/index.html',
   'rey/style.css',
   'rey/chronicle.css',
@@ -40,7 +43,7 @@ const scenario = await readFile('rey/scenario.js', 'utf8');
 const replay = await readFile('rey/replay.js', 'utf8');
 const serviceWorker = await readFile('rey/sw.js', 'utf8');
 
-for (const ref of ['style.css', 'chronicle.css', 'campaign.css', 'scenario.css', 'replay.css', 'net.js', 'determinism.js', 'game.js', 'app.js', 'chronicle.js', 'campaign.js', 'scenario.js', 'replay.js', 'manifest.webmanifest']) {
+for (const ref of ['world.js', 'world-map.js', 'world.css', 'style.css', 'chronicle.css', 'campaign.css', 'scenario.css', 'replay.css', 'net.js', 'determinism.js', 'game.js', 'app.js', 'chronicle.js', 'campaign.js', 'scenario.js', 'replay.js', 'manifest.webmanifest']) {
   if (!html.includes(ref)) throw new Error(`index.html no referencia ${ref}`);
 }
 
@@ -102,7 +105,7 @@ for (const id of ['difficultySelect', 'ageInfo', 'factionInfo', 'objectiveInfo',
   if (!html.includes(`id="${id}"`)) throw new Error(`Falta la interfaz de conquista #${id}`);
 }
 const sw = await readFile('rey/sw.js', 'utf8');
-if (!sw.includes('reinos-cartografo-v8')) throw new Error('La PWA no renovó su caché para Cartógrafo v2');
+if (!sw.includes('reinos-world-v9')) throw new Error('La PWA no renovó su caché para el mapa del reino');
 
 for (const marker of ['const FACTIONS =', 'OBJECTIVE_DEFS', 'stepObjectives(dt)', "victoryReason='supremacy'", 'objectives: G.objectives', 'aiObjectiveTarget', 'FOG.update(mySide,S)', 'AI_HOLD_SUPREMACY', 'OBJECTIVES_AFTER_FOG']) {
   if (!game.includes(marker)) throw new Error(`Reinos Asimétricos incompleto: falta ${marker}`);
@@ -119,7 +122,7 @@ for (const marker of ['commanderUses', 'mercenariesHired', 'worldEvents']) {
 }
 if (game.includes('CHEAT_CODE') || game.includes('tryCheat')) throw new Error('El código secreto antiguo sigue activo después de oficializar habilidades');
 
-for (const marker of ['const CAMPAIGN_MISSIONS =', 'applyCampaignSetup', 'stepCampaign(dt)', 'scoreCampaign', "CustomEvent('reinos:campaign-complete'", 'startCampaign(id)', 'getCampaignDefinitions', 'CAMPAIGN_RESTART_RESET']) {
+for (const marker of ['const CAMPAIGN_MISSIONS =', 'applyCampaignSetup', 'stepCampaign(dt)', 'scoreCampaign', "CustomEvent('reinos:campaign-complete'", 'startCampaign(id,options={})', 'getCampaignDefinitions', 'CAMPAIGN_RESTART_RESET']) {
   if (!game.includes(marker)) throw new Error(`Campaña incompleta en game.js: falta ${marker}`);
 }
 for (const marker of ['reinos.campaign.v1', 'bestStars', 'reinos:campaign-complete', 'campaignNextBtn', 'campaignRetryBtn', 'SINGLE_RETRY_HANDLER']) {
@@ -144,7 +147,7 @@ for (const marker of ['REPLAY_SEEDED_RNG','REPLAY_DETERMINISTIC_COMMAND_LOG','RE
 for (const marker of ['reinos.replays.v1','reinos-replays-v2','reinos-replay-v2','ANTIGUAS O INCOMPATIBLES','MAX_REPLAYS','reinos:replay-complete','replayImportInput','toggleReplayPause']) {
   if (!replay.includes(marker)) throw new Error(`Biblioteca de repeticiones incompleta: falta ${marker}`);
 }
-for (const asset of ['./scenario.css','./replay.css','./scenario.js','./replay.js','./determinism.js']) {
+for (const asset of ['./world.js','./world-map.js','./world.css','./scenario.css','./replay.css','./scenario.js','./replay.js','./determinism.js']) {
   if (!serviceWorker.includes(asset)) throw new Error(`El service worker no cachea ${asset}`);
 }
 if (game.includes('Math.random()')) throw new Error('game.js conserva azar no sembrado y rompería la reproducción determinista');

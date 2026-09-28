@@ -14,7 +14,7 @@ const MAP_W = 2600, MAP_H = 1700;
 const SIM_DT = 1 / 20;          // paso de simulación (20 Hz)
 const SNAP_INT = 0.1;           // cada cuánto el host manda snapshot (10 Hz)
 const REPLAY_VERSION = 2;
-const REPLAY_ENGINE = 'reinos-cartografo-v8';
+const REPLAY_ENGINE = 'reinos-world-v9';
 const REPLAY_COMMAND_LIMIT = 6000;
 const SCENARIO_PLACEMENT_LIMIT = 48;
 const SCENARIO_PLACEMENT_KINDS = new Set(['swordsman','archer','knight','tower','barracks','gold','wood']);
@@ -178,6 +178,8 @@ let running = false;
 let aiDifficulty = 'warrior';
 let campaignMissionId = null;
 let campaignOutcomeSent = false;
+let currentRegionId = null;
+function activeRegion(){ return globalThis.REINOS_WORLD?.get(currentRegionId) || null; }
 let currentScenario = null;
 let simulationSeed = 1;
 let simulationRngState = 1;
@@ -279,13 +281,14 @@ function normalizeReplay(input){
   for(const entry of input.commands){
     if(!entry || !Number.isInteger(entry.tick) || entry.tick<0 || entry.tick>finalTick) return null;
     const side=entry.side==='blue'?'blue':entry.side==='red'?'red':null;
-    const cmd=globalThis.Net?.validateCommand?.(entry.cmd);
+    const cmd=Net.validateCommand(entry.cmd);
     if(!side || !cmd) return null;
     commands.push({tick:entry.tick,side,cmd});
   }
   commands.sort((a,b)=>a.tick-b.tick);
   const scenario=kind==='scenario'?normalizeScenario(input.scenario):null;
   const campaignId=kind==='campaign' && campaignMissionById(input.campaignId)?input.campaignId:null;
+  if(input.regionId!=null && (kind!=='campaign' || globalThis.REINOS_WORLD?.get(input.regionId)?.mission!==campaignId)) return null;
   return {
     version:REPLAY_VERSION,
     engine:REPLAY_ENGINE,
@@ -295,6 +298,7 @@ function normalizeReplay(input){
     difficulty:AI_PROFILES[input.difficulty]?input.difficulty:(sourceMode==='host'?'human':'warrior'),
     seed:normalizeSeed(input.seed),
     campaignId, scenario, commands,
+    regionId:kind==='campaign' && globalThis.REINOS_WORLD?.get(input.regionId)?.mission===campaignId ? input.regionId : null,
     finalTick, finalChecksum,
     durationSeconds:Math.max(0,Number(input.durationSeconds)||0),
     finishedAt:Number(input.finishedAt)||Date.now(),
@@ -304,6 +308,7 @@ function normalizeReplay(input){
   };
 }
 function replayTitle(sourceMode){
+  if(activeRegion()) return activeRegion().name;
   if(campaignMissionId) return campaignMissionById(campaignMissionId)?.title || 'Campaña';
   if(currentScenario) return currentScenario.title;
   return sourceMode==='host'?'Duelo online':'Batalla libre';
@@ -315,7 +320,7 @@ function beginReplayCapture(sourceMode){
   replayCapture={
     version:REPLAY_VERSION, engine:REPLAY_ENGINE, sourceMode, kind,
     title:replayTitle(sourceMode), side:mySide, difficulty:aiDifficulty, seed:simulationSeed,
-    campaignId:campaignMissionId||null,
+    campaignId:campaignMissionId||null, regionId:currentRegionId,
     scenario:currentScenario?{...currentScenario,units:{...currentScenario.units},placements:(currentScenario.placements||[]).map((item)=>({...item}))}:null,
     commands:[],
   };
@@ -326,7 +331,7 @@ function recordReplayCommand(side,cmd){
     // REPLAY_OVERFLOW_GUARD: nunca publica una repetición truncada.
     replayCapture.overflow=true; return;
   }
-  const clean=globalThis.Net?.validateCommand?.(cmd);
+  const clean=Net.validateCommand(cmd);
   if(!clean) return;
   replayCapture.commands.push({tick:G?.tick||0,side:side==='blue'?'blue':'red',cmd:clean});
 }
@@ -440,6 +445,7 @@ function sightFor(e){
   let value=DEFS[e.kind].sight || 80;
   if(e.side==='blue') value*=factionOf(e.side).sight;
   if(worldEventActive('blackFog')) value*=0.68;
+  if(activeRegion()) value*=activeRegion().sight;
   return value;
 }
 
@@ -557,6 +563,7 @@ function addNode(type, x, y, amount) {
 // ---------- Inicialización de partida ----------
 function initMap() {
   G = freshState();
+  if(currentRegionId) G.regionId=currentRegionId;
   ffRebuildT=0;
   AI.t=0; AI.lastBuild=0; AI.lastMercenary=-120; AI.mercenaryCampId=null;
   if(simulationMode()==='sp'){
@@ -604,6 +611,10 @@ function initMap() {
       const a = simulationRandom()*Math.PI*2, rd = 18+simulationRandom()*70;
       addNode('wood', cx+Math.cos(a)*rd, cy+Math.sin(a)*rd, 320);
     }
+  }
+  const region=activeRegion();
+  if(region) for(const node of G.nodes){
+    node.amount=Math.round(node.amount*(node.type==='gold'?region.gold:region.wood)); node.max=node.amount;
   }
   recalcPop();
 }
@@ -839,7 +850,9 @@ const TERRAIN = {
       for(let cx=0; cx<this.COLS; cx++){
         if(this.biomes[cy*this.COLS+cx]!==0) continue;
         const r=rng(cx,cy,7);
-        if(r<0.04) this.set(cx,cy,2,255);       // agua
+        if(activeRegion()){
+          const tile=REINOS_WORLD.tile(activeRegion(),cx,cy,r); this.set(cx,cy,tile.biome,tile.cost);
+        } else if(r<0.04) this.set(cx,cy,2,255);       // agua
         else if(r<0.16) this.set(cx,cy,1,2.5);  // barro
       }
     }
@@ -989,7 +1002,7 @@ function drawParticles(S){
 // ============================================================
 const SFX = {
   ctx: null,
-  init(){ try{ this.ctx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} },
+  init(){ if(this.ctx) return; try{ this.ctx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} },
   resume(){ if(this.ctx && this.ctx.state==='suspended') this.ctx.resume(); },
 
   play(type){
@@ -1567,7 +1580,7 @@ function finalizeCampaignOutcome(winner,state){
   const stars=scoreCampaign(state,winner);
   if(state.campaign) state.campaign.stars=stars;
   const detail={
-    id:mission.id, act:mission.act, title:mission.title, won, stars,
+    id:mission.id, act:mission.act, title:mission.title, won, stars, regionId:currentRegionId,
     time:Math.round(state.time||0), victoryReason:state.victoryReason||'castle',
     commanderUses:state.stats?.[mySide]?.commanderUses||0,
     mercenariesHired:state.stats?.[mySide]?.mercenariesHired||0,
@@ -2346,7 +2359,8 @@ function drawGround(){
     for(let gy=y0; gy<y1; gy+=T){
       const tx=gx/T, ty=gy/T;
       const r=h2(tx,ty);
-      ctx.fillStyle=GRASS[(r*GRASS.length)|0];
+      const palette=activeRegion()?.palette || GRASS;
+      ctx.fillStyle=palette[(r*palette.length)|0];
       ctx.fillRect(gx,gy,T+1,T+1);
       // matas de pasto / piedritas deterministas
       const r2=h2(tx+99,ty-31);
@@ -3066,7 +3080,7 @@ function updateHUD(){
   const campaignInfo=document.getElementById('campaignInfo');
   if(campaignInfo){
     campaignInfo.style.display=S.campaign?'block':'none';
-    if(S.campaign) campaignInfo.textContent=campaignObjectiveText(S);
+    if(S.campaign) campaignInfo.textContent=(activeRegion()?activeRegion().name+' · ':'')+campaignObjectiveText(S);
   }
   const scenarioInfo=document.getElementById('scenarioInfo');
   if(scenarioInfo){
@@ -3238,6 +3252,7 @@ function onSnapshot(s){
 
 // ---------- Arranque / menús ----------
 function startGame(opts){
+  window.dispatchEvent(new CustomEvent('reinos:match-start'));
   // CAMPAIGN_RESTART_RESET: una misión puede reiniciarse sin recargar ni conservar UI vieja.
   const endScreen=document.getElementById('endScreen'); if(endScreen) endScreen.style.display='none';
   document.getElementById('battleSummary')?.replaceChildren();
@@ -3250,6 +3265,8 @@ function startGame(opts){
   mode=replayRecord?'replay':opts.mode;
   mySide=opts.side; enemySide = mySide==='red'?'blue':'red';
   campaignMissionId=opts.campaignId||replayRecord?.campaignId||null;
+  currentRegionId=opts.regionId||replayRecord?.regionId||null;
+  if(activeRegion()?.mission!==campaignMissionId) currentRegionId=null;
   currentScenario=opts.scenario?normalizeScenario(opts.scenario):(replayRecord?.scenario||null);
   campaignOutcomeSent=mode==='replay';
   lastWorldAnnouncementSerial=0;
@@ -3309,6 +3326,8 @@ function showEnd(winner){
     document.getElementById('endSub').textContent='El estado no alcanzó el desenlace registrado dentro del tick final permitido.';
     document.getElementById('endScreen').style.display='flex'; emitReplayState(false); return;
   }
+  // Campaign scoring belongs to the final state in both capture and playback.
+  if(mode==='replay' && state?.campaign) state.campaign.stars=scoreCampaign(state,winner);
   const replayCheck=mode==='replay'?verifyReplayChecksum(state):null;
   if(replayCheck && !replayCheck.matched){
     document.getElementById('endTitle').textContent='REPETICIÓN INCOMPATIBLE';
@@ -3341,7 +3360,7 @@ function showEnd(winner){
 
 function runDeterminismTrial(seed){
   mode='sp'; mySide='red'; enemySide='blue'; aiDifficulty='warrior';
-  campaignMissionId=null; campaignOutcomeSent=false; currentScenario=null;
+  campaignMissionId=null; campaignOutcomeSent=false; currentScenario=null; currentRegionId=null;
   replayCapture=null; replayPlayback=null; replaySourceMode=null; replayVerification=null;
   resetSimulationRng(seed); initMap();
   applyScenarioSetup(normalizeScenario({
@@ -3386,10 +3405,12 @@ let _inviteUrl = '';
 window.REINOS = {
   startSolo(side,difficulty='warrior'){ startGame({mode:'sp', side, difficulty}); },
 
-  startCampaign(id){
+  startCampaign(id,options={}){
     const mission=campaignMissionById(id);
     if(!mission) return false;
-    startGame({mode:'sp',side:mission.side,difficulty:mission.difficulty,campaignId:mission.id});
+    const region=globalThis.REINOS_WORLD?.get(options?.regionId);
+    if(options?.regionId && region?.mission!==id) return false;
+    startGame({mode:'sp',side:mission.side,difficulty:mission.difficulty,campaignId:mission.id,regionId:region?.id||null});
     return true;
   },
 
@@ -3427,6 +3448,7 @@ window.REINOS = {
     return {
       mode:campaignMissionId?'campaign':currentScenario?'scenario':mode, side:mySide, difficulty:simulationMode()==='sp'?aiDifficulty:'human', age:S?.res?.[mySide]?.age||1,
       faction:FACTIONS[mySide].name, victoryReason:S?.victoryReason||'castle',
+      regionId:currentRegionId, regionName:activeRegion()?.name||null,
       campaignId:campaignMissionId, campaignTitle:campaignMissionById(campaignMissionId)?.title||null, campaignStars:S?.campaign?.stars||0,
       scenarioTitle:currentScenario?.title||S?.scenario?.title||null, scenarioVictoryMode:currentScenario?.victoryMode||S?.scenario?.victoryMode||null,
       seed:S?.seed||simulationSeed, replay:mode==='replay',

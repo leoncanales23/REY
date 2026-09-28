@@ -216,9 +216,10 @@
 
       const details = document.createElement('div');
       details.className = 'chronicle-entry-details';
+      const regionLabel=entry.regionName?` · ${entry.regionName}`:'';
       const campaignLabel=entry.campaignTitle?` · ${entry.campaignTitle} · ${'★'.repeat(entry.campaignStars||0)}${'☆'.repeat(3-(entry.campaignStars||0))}`:'';
       const scenarioLabel=entry.scenarioTitle?` · ${entry.scenarioTitle}`:'';
-      details.textContent = `${sideName(entry.side)} · ${factionName(entry.side)} · ${modeName(entry.mode)}${campaignLabel}${scenarioLabel} · ${difficultyName(entry.difficulty)} · ${victoryReasonName(entry.victoryReason)} · 👑${entry.commanderUses||0} · ⚔${entry.mercenariesHired||0} · Edad ${entry.finalAge||1} · ${formatDuration(entry.durationMs)}`;
+      details.textContent = `${sideName(entry.side)} · ${factionName(entry.side)} · ${modeName(entry.mode)}${regionLabel}${campaignLabel}${scenarioLabel} · ${difficultyName(entry.difficulty)} · ${victoryReasonName(entry.victoryReason)} · 👑${entry.commanderUses||0} · ⚔${entry.mercenariesHired||0} · Edad ${entry.finalAge||1} · ${formatDuration(entry.durationMs)}`;
 
       article.append(header, details);
       list.appendChild(article);
@@ -275,6 +276,7 @@
       campaignStars: meta.campaignStars || 0,
       scenarioTitle: meta.scenarioTitle || activeBattle.scenarioTitle || null,
       scenarioVictoryMode: meta.scenarioVictoryMode || activeBattle.scenarioVictoryMode || null,
+      regionId:meta.regionId||null, regionName:meta.regionName||null,
       seed: meta.seed || null,
       finishedAt: Date.now(),
       durationMs: Math.max(1000, Date.now() - activeBattle.startedAt),
@@ -330,11 +332,11 @@
 
     if (typeof REINOS.startCampaign === 'function') {
       const originalCampaign = REINOS.startCampaign.bind(REINOS);
-      REINOS.startCampaign = (id) => {
+      REINOS.startCampaign = (id, options) => {
         const mission = typeof REINOS.getCampaignDefinitions === 'function'
           ? REINOS.getCampaignDefinitions().find((item) => item.id === id)
           : null;
-        const started = originalCampaign(id);
+        const started = originalCampaign(id, options);
         if (started !== false && mission) beginBattle('campaign', mission.side, null, mission.difficulty, { campaignId:id, campaignTitle:mission.title });
         return started;
       };
@@ -350,6 +352,13 @@
         return started;
       };
     }
+
+    const originalReplay = REINOS.startReplay.bind(REINOS);
+    REINOS.startReplay = (record) => {
+      if (!REINOS.normalizeReplay(record)) return false;
+      clearActiveBattle();
+      return originalReplay(record);
+    };
 
     const originalHost = REINOS.hostGame.bind(REINOS);
     REINOS.hostGame = () => {

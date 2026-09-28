@@ -116,6 +116,7 @@
     if (!state || typeof state !== 'object') return null;
     return {
       version: VERSION,
+      ...(state.regionId ? {regionId:String(state.regionId)} : {}),
       tick: Number(state.tick) || 0,
       time: number(state.time),
       seed: Number(state.seed) >>> 0,
