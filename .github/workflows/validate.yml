@@ -8,7 +8,7 @@ permissions:
 jobs:
   static-validation:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,9 +25,25 @@ jobs:
           node --check rey/replay.js
           node --check rey/determinism.js
           node --check rey/sw.js
+          node --check rey/world.js
+          node --check rey/world-map.js
       - name: Validate app shell and config
         run: node scripts/validate.mjs
       - name: Check canonical checksum contract
         run: node scripts/test-determinism.mjs
+      - name: Check region progression
+        run: node scripts/test-world.mjs
+      - name: Install browser test tools
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Check kingdom browser journey
+        run: npm run test:browser
+      - name: Preserve browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kingdom-browser-evidence
+          path: artifacts/
       - name: Check browser determinism
         run: node scripts/browser-determinism.mjs

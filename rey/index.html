@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="campaign.css">
 <link rel="stylesheet" href="scenario.css">
 <link rel="stylesheet" href="replay.css">
+<link rel="stylesheet" href="world.css">
 </head>
 <body class="crt">
   <canvas id="game" aria-label="Campo de batalla de REINOS"></canvas>
@@ -29,6 +30,7 @@
         <span id="networkBadge" class="badge" data-state="online">RED DISPONIBLE</span>
         <span class="badge">P2P - HOST AUTORITATIVO</span>
       </div>
+      <button id="openWorldBtn" class="world-entry" type="button"><span>LA CAMPAÑA DEL REINO</span><strong>Un mundo por conquistar</strong><small>Abre el mapa · traza tu siguiente conquista →</small></button>
       <h2>UN JUGADOR</h2>
       <div class="difficulty-picker">
         <label for="difficultySelect">DIFICULTAD DE LA IA</label>
@@ -105,12 +107,54 @@
     <div id="endTitle">FIN</div>
     <div id="endSub"></div>
     <div id="battleSummary" aria-live="polite"></div>
+    <p id="worldOutcome" hidden aria-live="polite"></p>
+    <button id="worldReturn" class="mini-btn" type="button" hidden>VOLVER AL MAPA DEL REINO</button>
     <div class="end-campaign-actions">
       <button id="campaignRetryBtn" class="mini-btn" type="button" hidden>REINTENTAR MISION</button>
       <button id="campaignNextBtn" class="mini-btn" type="button" hidden>SIGUIENTE MISION</button>
     </div>
     <button class="btn" style="max-width:240px;" onclick="REINOS.restart()">VOLVER AL MENU</button>
   </div>
+
+  <dialog id="worldDialog" class="world-dialog" aria-labelledby="worldTitle">
+    <header class="world-header">
+      <div><span class="world-kicker">REINOS / CRÓNICAS DE LA FRONTERA</span><h2 id="worldTitle">El reino dividido</h2></div>
+      <button id="closeWorldBtn" type="button" aria-label="Cerrar mapa del reino">✕</button>
+    </header>
+    <div class="world-layout">
+      <div class="world-atlas">
+        <div class="world-map-label">DOMINIOS DE LA CORONA <span id="worldProgress" aria-live="polite"></span></div>
+        <div class="world-map-stage">
+          <svg viewBox="0 0 1000 600" preserveAspectRatio="none" aria-hidden="true" class="world-art">
+            <defs>
+              <radialGradient id="sea"><stop stop-color="#234451"/><stop offset="1" stop-color="#0a1924"/></radialGradient>
+              <pattern id="chart" width="50" height="50" patternUnits="userSpaceOnUse"><path d="M50 0H0V50" fill="none" stroke="#9fb7ae" stroke-opacity=".08"/></pattern>
+              <pattern id="forestTrees" width="34" height="40" patternUnits="userSpaceOnUse"><path d="M17 5L5 29H29Z M17 22V36" fill="#112d29" stroke="#699080" stroke-opacity=".24"/></pattern>
+              <pattern id="mountains" width="60" height="55" patternUnits="userSpaceOnUse"><path d="M0 50L25 9L55 50Z" fill="#202f37" stroke="#bac7c4" stroke-opacity=".3"/><path d="M17 22L25 9L35 24L25 19Z" fill="#b5c8c6" opacity=".6"/></pattern>
+            </defs>
+            <rect width="1000" height="600" fill="url(#sea)"/>
+            <rect width="1000" height="600" fill="url(#chart)"/>
+            <path d="M106 410L162 298L280 245L320 145L458 92L587 126L640 49L792 19L940 68L969 207L866 307L689 274L628 375L479 463L390 563L231 584L124 512Z" fill="#122a2c" stroke="#658b85" stroke-opacity=".35" stroke-width="12"/>
+            <g id="worldLands"></g>
+            <path d="M470 145Q405 275 486 320T410 515" fill="none" stroke="#83bdc3" stroke-width="5" opacity=".55"/>
+            <g id="worldRoutes" fill="none" stroke="#e7c880" stroke-width="2" stroke-dasharray="5 9"></g>
+            <g transform="translate(105 125)" fill="none" stroke="#bca877" opacity=".7"><circle r="35"/><path d="M0-48L9 0L0 48L-9 0Z M-48 0L0-9L48 0L0 9Z"/><text y="-59" text-anchor="middle" fill="#c6b687" stroke="none" font-size="15">N</text></g>
+            <g fill="#a6bcb8" opacity=".45" font-family="Georgia,serif" font-style="italic" letter-spacing="6"><text x="650" y="470" font-size="22">Mar del Olvido</text><text x="92" y="590" font-size="13">TERRA INCOGNITA</text></g>
+          </svg>
+          <div id="worldMarkers"></div>
+        </div>
+        <div class="world-legend"><span>◆ Tu frontera</span><span>★ Territorio conquistado</span><span>◇ Región bloqueada</span></div>
+      </div>
+      <section id="worldDetails" class="world-details" aria-labelledby="worldName" aria-live="polite">
+        <span id="worldChapter" class="world-kicker"></span>
+        <h3 id="worldName"></h3><div id="worldDifficulty"></div><p id="worldDescription"></p>
+        <dl><dt>LA MISIÓN</dt><dd id="worldObjective"></dd><dt>EL CAMPO DE BATALLA</dt><dd id="worldRules"></dd><dt>BOTÍN DE CONQUISTA</dt><dd id="worldReward"></dd></dl>
+        <button id="worldStart" type="button"></button>
+        <p class="world-note">Cada batalla continúa los actos de la Campaña de los Dos Reyes.</p>
+      </section>
+    </div>
+    <footer id="worldStorage" role="status"></footer>
+  </dialog>
 
   <dialog id="chronicleDialog" class="chronicle-dialog" aria-labelledby="chronicleTitle">
     <div class="chronicle-shell">
@@ -248,11 +292,13 @@
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" crossorigin="anonymous"></script>
   <script src="net.js"></script>
   <script src="determinism.js"></script>
+  <script src="world.js"></script>
   <script src="game.js"></script>
   <script src="app.js"></script>
   <script src="chronicle.js"></script>
   <script src="campaign.js"></script>
   <script src="scenario.js"></script>
   <script src="replay.js"></script>
+  <script src="world-map.js"></script>
 </body>
 </html>

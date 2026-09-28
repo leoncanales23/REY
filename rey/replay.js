@@ -157,7 +157,7 @@
       const empty = document.createElement('p');
       empty.className = 'replay-empty';
       empty.textContent = incompatible
-        ? 'Las grabaciones v1 no contienen checksum final y no pueden verificarse. Puedes exportarlas antes de limpiar la biblioteca.'
+        ? 'Las grabaciones de otro motor se conservan, pero no pueden reproducirse con esta versión. Puedes exportarlas antes de limpiar la biblioteca.'
         : 'Las batallas terminadas en este dispositivo aparecerán aquí.';
       list.appendChild(empty);
       return;

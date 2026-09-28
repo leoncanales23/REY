@@ -92,3 +92,53 @@ Las batallas locales y las partidas alojadas registran una repetición compacta 
 El editor visual permite colocar hasta 48 tropas, torres, cuarteles y nodos de recursos sobre una vista completa del campo. Las piezas se sanitizan en la interfaz y nuevamente dentro del motor; cuando el mapa visual está vacío, los escenarios v1 continúan usando sus contadores numéricos originales.
 
 Cada replay v2 guarda un checksum canónico del estado final bajo el motor `reinos-cartografo-v8`. Al terminar una reproducción, REINOS compara el estado reconstruido con el registrado y muestra una verificación explícita. La CI ejecuta además dos simulaciones completas con la misma semilla y exige el mismo checksum, junto con una tercera semilla que debe producir un estado diferente.
+
+## Mapa del reino · primera frontera
+
+El menú abre un atlas territorial con **Capital Real → Bosque Negro → Paso de
+la Montaña**. Solo Capital está disponible al comenzar; ganar una expedición
+abre la siguiente región. Cada una conserva el acto correspondiente de la
+Campaña de los Dos Reyes, con su comandante, objetivos y estrellas, y añade
+paleta de terreno y reglas regionales simétricas. La campaña clásica sigue
+siendo accesible y conserva `reinos.campaign.v1`.
+
+- `rey/world.js`: catálogo inmutable, requisitos por ID, biomas, modificadores
+  y funciones puras de progreso. Añadir regiones no requiere añadir pantallas ni
+  ramas por región al motor; los nuevos actos sí necesitan sus propias reglas.
+- `rey/world-map.js` y `world.css`: atlas SVG, marcadores accesibles por teclado
+  y touch, briefings, reintentos, resultados y almacenamiento `reinos.world.v1`.
+- `game.js`: pequeños puntos de integración para terreno, reservas, visión,
+  identidad regional y resultados. No altera comandos ni autoridad P2P.
+- El progreso guarda mejores estrellas, deriva desbloqueos por requisitos y
+  no entrega estadísticas de combate permanentes. Si falla el almacenamiento,
+  se mantiene en memoria y se avisa que se perderá al cerrar.
+
+Las expediciones también registran avance en su acto clásico. Las victorias
+clásicas, escenarios, partidas online y replays no conquistan regiones. No hay
+migración automática de estrellas antiguas al mapa nuevo.
+
+El motor de replay actual es **`reinos-world-v9`**: incluye la región y reconstruye
+la puntuación final de campaña antes de verificar el checksum. Los registros
+anteriores permanecen exportables y se indican como incompatibles. Se corrigió
+el acceso a `Net.validateCommand` que impedía capturar órdenes en el motor previo.
+
+### Pruebas de la fase
+
+```bash
+npm ci
+npx playwright install --with-deps chromium
+npm test
+npm run test:browser
+node scripts/browser-determinism.mjs # requiere Chrome/Chromium o CHROME_BIN
+```
+
+Playwright es una dependencia exclusiva de desarrollo: el juego continúa siendo
+estático. El E2E arranca su servidor local, prueba desktop/touch, bloqueo,
+derrota, reintento, victoria, recarga, guardados corruptos/cuota, PWA offline y
+replay de cada región sin otorgar progreso ni alterar la crónica. Para recorrer
+victorias en tiempo acotado, el servidor de prueba prepara propiedad inicial de
+Bastiones; los desenlaces, ticks, puntuación y checksums usan el motor real.
+Esa instrumentación nunca se publica en `rey/game.js`. Las capturas quedan en
+`artifacts/` y GitHub Actions las conserva como artefacto del PR.
+
+Auditoría y próximas fases: [REY_2026_GAMEPLAN.md](REY_2026_GAMEPLAN.md).

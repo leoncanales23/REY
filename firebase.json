@@ -1,7 +1,7 @@
 {
   "hosting": {
     "public": ".",
-    "ignore": ["firebase.json", ".firebaserc", "deploy.sh", "README.md", "TECHNOLOGY_REGISTRY.md", "scripts/**", ".github/**", "**/.*", "**/node_modules/**"],
+    "ignore": ["firebase.json", ".firebaserc", "deploy.sh", "README.md", "TECHNOLOGY_REGISTRY.md", "scripts/**", "docs/**", "artifacts/**", "package*.json", "REY_2026_GAMEPLAN.md", ".github/**", "**/.*", "**/node_modules/**"],
     "cleanUrls": true,
     "trailingSlash": false,
     "headers": [
