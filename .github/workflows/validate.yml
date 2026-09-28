@@ -27,12 +27,18 @@ jobs:
           node --check rey/sw.js
           node --check rey/world.js
           node --check rey/world-map.js
+          node --check rey/era-core.js
+          node --check rey/content/eras/rey.js
+          node --check rey/content/eras/chile1810.js
+          node --check rey/content/eras/mars2135.js
       - name: Validate app shell and config
         run: node scripts/validate.mjs
       - name: Check canonical checksum contract
         run: node scripts/test-determinism.mjs
       - name: Check region progression
         run: node scripts/test-world.mjs
+      - name: Check Era Pack registry and multiplayer contract
+        run: node scripts/test-era-core.mjs
       - name: Install browser test tools
         run: |
           npm ci

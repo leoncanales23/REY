@@ -22,6 +22,7 @@ window.__worldTest={
   terrain(){return Array.from(TERRAIN.tiles);},
   recordOrder(){const castle=G.ents.find(e=>e.side===mySide&&e.kind==='castle');issue({type:'rally',buildingId:castle.id,x:castle.x+100,y:castle.y});},
   defeat(){G.ents.find(e=>e.side===mySide&&e.kind==='king').hp=0;this.advance(1);},
+  commanderAbility(side){const commander=G.ents.find(e=>e.side===side&&e.kind==='king');G.res[side].age=2;return useCommanderAbility(side,COMMANDER_ABILITIES[side].id,commander.id,320,320);},
   trial(id,seed){testFixture=null;const region=REINOS_WORLD.get(id);startGame({mode:'sp',side:campaignMissionById(region.mission).side,difficulty:campaignMissionById(region.mission).difficulty,campaignId:region.mission,regionId:id,seed});return this.advance(360);}
 };
 `;
@@ -82,8 +83,14 @@ try {
     await page.waitForTimeout(50);
     const chronicle=await page.evaluate(()=>localStorage.getItem('reinos.warChronicle.v1'));
     const record=await page.evaluate(()=>JSON.parse(localStorage.getItem('reinos.replays.v1'))[0].record);
+    assert.equal(record.eraId,'rey');
+    assert.equal(record.eraVersion,'1.0.0');
+    assert.equal(record.rulesVersion,'1.0.0');
+    assert.equal(record.mapId,id);
+    assert.equal(await page.evaluate(()=>REINOS.getMatchMeta().eraId),'rey');
     assert.equal(record.regionId,id);
     assert.equal(await page.evaluate(record=>REINOS.normalizeReplay({...record,regionId:'untrusted-region'}),record),null);
+    assert.equal(await page.evaluate(record=>REINOS.normalizeReplay({...record,eraId:'mars2135'}),record),null);
     assert(record.commands.length>0,'commands must actually be captured');
     await page.evaluate(record=>{REINOS.startReplay(record);__worldTest.stop();__worldTest.advance(record.finalTick+1);},record);
     assert.match(await page.textContent('#endSub'),/✓ CHECKSUM/);
@@ -106,6 +113,16 @@ try {
   assert.equal(await page.getAttribute('#region-pass','data-state'),'conquered');
   await page.screenshot({path:'artifacts/world-conquered.png'});
   await page.click('#closeWorldBtn');
+  const scenario=await page.evaluate(()=>{const config=REINOS.getScenarioDefaults();config.seed=991;return REINOS.normalizeScenario(config);});
+  assert.equal(scenario.seed,991);
+  await page.evaluate(config=>{REINOS.startScenario(config);__worldTest.stop();},scenario);
+  const scenarioMeta=await page.evaluate(()=>REINOS.getMatchMeta());
+  assert.equal(scenarioMeta.mode,'scenario');
+  assert.equal(scenarioMeta.eraId,'rey');
+  assert.equal(scenarioMeta.scenarioTitle,scenario.title);
+  assert.equal((await page.evaluate(()=>__worldTest.state())).seed,991);
+  assert.equal(await page.evaluate(()=>__worldTest.commanderAbility('red')),true,'el poder del comandante sigue resolviendo desde el pack REY');
+  await page.reload();
   await page.evaluate(()=>{REINOS.startCampaign('crownVacant');__worldTest.stop();});
   assert.equal((await page.evaluate(()=>REINOS.getMatchMeta())).regionId,null);
   await page.reload();
@@ -168,7 +185,7 @@ try {
   }));
   await live.screenshot({path:'artifacts/world-battle.png'});
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({ok:true,checks,frameTiming,coverage:['locks','defeat','retry','victory','reload','replay-no-rewards','legacy-campaign','corrupt-storage','denied-storage','quota-memory-fallback','offline-PWA','mobile-touch','screenshots']},null,2));
+  console.log(JSON.stringify({ok:true,checks,frameTiming,coverage:['locks','defeat','retry','victory','reload','replay-no-rewards','legacy-campaign','scenario','era-locked-replay','corrupt-storage','denied-storage','quota-memory-fallback','offline-PWA','mobile-touch','screenshots']},null,2));
 } finally {
   if(browser) await browser.close();
   await new Promise(r=>server.close(r));

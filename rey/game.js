@@ -16,158 +16,36 @@ const SNAP_INT = 0.1;           // cada cuánto el host manda snapshot (10 Hz)
 const REPLAY_VERSION = 2;
 const REPLAY_ENGINE = 'reinos-world-v9';
 const REPLAY_COMMAND_LIMIT = 6000;
-const SCENARIO_PLACEMENT_LIMIT = 48;
-const SCENARIO_PLACEMENT_KINDS = new Set(['swordsman','archer','knight','tower','barracks','gold','wood']);
-const SCENARIO_NEUTRAL_KINDS = new Set(['gold','wood']);
-const SCENARIO_DEFAULTS = Object.freeze({
-  title:'Frontera sin Nombre', side:'red', difficulty:'warrior', age:2,
-  gold:600, wood:500, victoryMode:'standard', holdSeconds:45, worldEvents:true,
-  units:{swordsman:3,archer:2,knight:0}, placements:[], seed:0,
-});
-
-const KINDS = ['castle','house','barracks','tower','villager','swordsman','archer','knight','mercenary','king'];
-
-const DEFS = {
-  castle:   {building:true, hp:2200, r:36, range:185, atk:20, cd:1.1, sight:260, name:'Castillo'},
-  house:    {building:true, hp:520,  r:24, name:'Casa', pop:5},
-  barracks: {building:true, hp:950,  r:30, name:'Cuartel'},
-  tower:    {building:true, hp:760,  r:20, range:160, atk:15, cd:0.9, sight:200, name:'Torre'},
-  villager: {hp:42,  r:9,  speed:64, atk:3,  cd:1.0, range:16, sight:130, name:'Aldeano', gather:9, carry:12},
-  swordsman:{hp:130, r:12, speed:56, atk:14, cd:1.1, range:18, sight:160, name:'Espadachín'},
-  archer:   {hp:58,  r:10, speed:60, atk:12, cd:1.3, range:128,sight:185, name:'Arquero', ranged:true},
-  knight:   {hp:190, r:14, speed:94, atk:19, cd:1.15,range:20, sight:170, name:'Caballero'},
-  mercenary:{hp:155, r:12, speed:66, atk:17, cd:1.05,range:19, sight:175, name:'Guardia Mercenaria'},
-  // Héroe: fuerte pero mortal. Un ejército enfocado igual lo derriba (sin masacres).
-  king:     {hp:460, r:17, speed:80, atk:28, cd:1.0, range:22, sight:210, name:'Rey', hero:true, regen:5},
-};
-
-const COST = {
-  villager: {g:50, w:0,   pop:1, t:6,  from:'castle'},
-  swordsman:{g:60, w:20,  pop:1, t:9,  from:'barracks'},
-  archer:   {g:40, w:40,  pop:1, t:9,  from:'barracks'},
-  knight:   {g:80, w:40,  pop:2, t:14, from:'barracks'},
-  house:    {g:0,  w:30,  build:true},
-  barracks: {g:0,  w:150, build:true},
-  tower:    {g:50, w:50,  build:true},
-};
-
-const AGE_DEFS = {
-  1: { name:'EDAD DE ALDEA' },
-  2: { name:'EDAD DE FORTALEZA' },
-  3: { name:'EDAD IMPERIAL' },
-};
-
-const UNIT_AGE = { villager:1, swordsman:1, archer:2, knight:3 };
-const BUILDING_AGE = { house:1, barracks:1, tower:2 };
-
-const RESEARCH = {
-  age2: { name:'Avanzar a Fortaleza', age:1, toAge:2, g:350, w:250, t:35, from:'castle' },
-  age3: { name:'Avanzar a Imperial', age:2, toAge:3, g:650, w:450, t:50, from:'castle' },
-  wheelbarrow: { name:'Carretilla', age:1, g:180, w:120, t:25, from:'castle', note:'+25% recolección y carga' },
-  masonry: { name:'Mampostería', age:2, g:260, w:260, t:35, from:'castle', note:'+22% vida de edificios' },
-  forgedBlades: { name:'Filos Forjados', age:2, g:240, w:160, t:30, from:'barracks', note:'+15% daño cuerpo a cuerpo' },
-  fletching: { name:'Emplumado', age:2, g:220, w:220, t:30, from:'barracks', note:'+12% daño y +20 alcance' },
-  cavalry: { name:'Cría de Guerra', age:3, g:360, w:260, t:40, from:'barracks', note:'+18% velocidad y +15% vida de caballeros' },
-};
-
-const AI_PROFILES = {
-  explorer: {
-    label:'EXPLORADOR', decisionTicks:36, villagers:8, towers:1, queueDepth:1,
-    attackBase:7, attackGrowth:120, gather:0.9, combat:0.9, startBonus:0,
-    age2At:125, age3At:310,
-  },
-  warrior: {
-    label:'GUERRERO', decisionTicks:20, villagers:10, towers:2, queueDepth:2,
-    attackBase:5, attackGrowth:90, gather:1, combat:1, startBonus:80,
-    age2At:85, age3At:235,
-  },
-  conqueror: {
-    label:'CONQUISTADOR', decisionTicks:12, villagers:13, towers:3, queueDepth:3,
-    attackBase:4, attackGrowth:70, gather:1.22, combat:1.12, startBonus:220,
-    age2At:55, age3At:165,
-  },
-};
-
-const FACTIONS = {
-  red: {
-    name:'LEGIÓN DEL RUGIDO', short:'RUGIDO',
-    description:'Presión cuerpo a cuerpo y aura del Rey León',
-    meleeAttack:1.10, kingAuraAttack:1.12, kingAuraSpeed:1.12, kingAuraRange:170,
-    capturePower:1.12,
-  },
-  blue: {
-    name:'ORDEN DEL HORIZONTE', short:'HORIZONTE',
-    description:'Alcance, visión y economía técnica de Nelson',
-    rangedRange:18, villagerGather:1.10, sight:1.15,
-    capturePower:1,
-  },
-};
-
-const OBJECTIVE_RADIUS = 92;
-const DOMINANCE_SECONDS = 75;
-const OBJECTIVE_DEFS = [
-  {id:'north', name:'BASTIÓN NORTE', x:MAP_W/2, y:400},
-  {id:'crown', name:'BASTIÓN DE LA CORONA', x:MAP_W/2, y:MAP_H/2},
-  {id:'south', name:'BASTIÓN SUR', x:MAP_W/2, y:MAP_H-400},
-];
-
-
-const COMMANDER_ABILITIES = {
-  red: {
-    id:'warCry', name:'RUGIDO DE GUERRA', age:2, cooldown:70, duration:12, radius:220,
-    attack:1.25, speed:1.20,
-    note:'+25% daño y +20% velocidad cerca del Rey León',
-  },
-  blue: {
-    id:'horizonEye', name:'OJO DEL HORIZONTE', age:2, cooldown:65, duration:14, radius:340,
-    note:'revela una zona y da +18% daño de proyectiles contra objetivos dentro',
-  },
-};
-
-const MERCENARY_CAMP_DEFS = [
-  {id:'northGuild', name:'HERMANDAD DEL NORTE', x:MAP_W/2-300, y:MAP_H/2-190},
-  {id:'southGuild', name:'COMPAÑÍA DEL SUR', x:MAP_W/2+300, y:MAP_H/2+190},
-];
-const MERCENARY_CAMP_RADIUS = 150;
-const MERCENARY_CONTRACT = {g:180, w:90, units:2, cooldown:85, age:2};
-
-const WORLD_EVENT_DEFS = {
-  abundance: {name:'TIEMPO DE ABUNDANCIA', duration:38, note:'+25% velocidad de recolección'},
-  warMarket: {name:'MERCADO DE GUERRA', duration:34, note:'contratos mercenarios -35% y campamentos acelerados'},
-  blackFog: {name:'NIEBLA NEGRA', duration:30, note:'visión global reducida; Ojo del Horizonte atraviesa la oscuridad'},
-  plague: {name:'LA GRAN PLAGA', duration:28, note:'aldeas sin murallas: villagers reciben 15% más daño'},
-  tradeTruce: {name:'TREGUA COMERCIAL', duration:32, note:'ambos bandos generan +40% de oro pasivo mientras dura'},
-  arrowStorm: {name:'TORMENTA DE FLECHAS', duration:25, note:'arqueros y torres disparan 30% más rápido'},
-};
+const ERA_CORE = globalThis.FRONTERAS_ERA_CORE;
+const ERA = ERA_CORE?.active();
+if (!ERA || ERA.status !== 'playable') throw new Error('La simulación necesita que el Era Pack activo tenga estado playable.');
+const SCENARIO_PLACEMENT_LIMIT = ERA.world.scenario.placementLimit;
+const SCENARIO_PLACEMENT_KINDS = new Set(ERA.world.scenario.placementKinds);
+const SCENARIO_NEUTRAL_KINDS = new Set(ERA.world.scenario.neutralKinds);
+const SCENARIO_DEFAULTS = Object.freeze(ERA.scenario.defaults);
+const KINDS = [...Object.keys(ERA.entities.buildings), ...Object.keys(ERA.entities.units)];
+const DEFS = Object.freeze({...ERA.entities.buildings, ...ERA.entities.units});
+const COST = ERA.resources.costs;
+const AGE_DEFS = ERA.ages.definitions;
+const UNIT_AGE = ERA.ages.unit;
+const BUILDING_AGE = ERA.ages.building;
+const RESEARCH = ERA.technologies.definitions;
+const AI_PROFILES = ERA.ai.profiles;
+const FACTIONS = ERA.factions.definitions;
+const OBJECTIVE_RADIUS = ERA.world.objectiveRadius;
+const DOMINANCE_SECONDS = ERA.world.dominanceSeconds;
+const OBJECTIVE_DEFS = ERA.world.objectives;
+const COMMANDER_ABILITIES = Object.fromEntries(Object.values(ERA.commanders.abilities).map((ability)=>[ability.side,ability]));
+const MERCENARY_CAMP_DEFS = Object.values(ERA.world.mercenaryCamps);
+const MERCENARY_CAMP_RADIUS = ERA.world.mercenaryRadius;
+const MERCENARY_CONTRACT = ERA.world.mercenaryContract;
+const WORLD_EVENT_DEFS = ERA.world.events;
 const WORLD_EVENT_IDS = Object.keys(WORLD_EVENT_DEFS);
-const WORLD_EVENT_WARNING = 12;
-
-const CAMPAIGN_MISSIONS = [
-  {
-    id:'crownVacant', act:'I', title:'LA CORONA VACÍA', side:'red', commander:'LEÓN',
-    difficulty:'explorer', difficultyLabel:'EXPLORADOR', kingMustLive:true, holdSeconds:35,
-    briefing:'La frontera quedó sin dueño. León debe ocupar el corazón del mapa antes de que Nelson convierta la Corona en una fortaleza.',
-    objective:'captura el Bastión de la Corona y sostenlo durante 35 segundos',
-  },
-  {
-    id:'steelPact', act:'II', title:'EL PACTO DE ACERO', side:'blue', commander:'NELSON',
-    difficulty:'warrior', difficultyLabel:'GUERRERO', kingMustLive:true,
-    briefing:'Nelson necesita ojos, oro y aliados. Los gremios neutrales aceptarán su bandera, pero solo si el Rey firma el contrato en persona.',
-    objective:'vence al reino rival y domina inteligencia y contratos mercenarios',
-  },
-  {
-    id:'lastCrown', act:'III', title:'LA ÚLTIMA CORONA', side:'red', commander:'LEÓN',
-    difficulty:'conqueror', difficultyLabel:'CONQUISTADOR', kingMustLive:true,
-    briefing:'Los dos reinos llegan armados a la tormenta final. La niebla caerá primero; después solo quedarán mando, territorio y acero.',
-    objective:'vence en la batalla final utilizando todas las capas estratégicas del reino',
-  },
-];
+const WORLD_EVENT_WARNING = ERA.world.worldEventWarning;
+const CAMPAIGN_MISSIONS = ERA.campaign.missions;
 function campaignMissionById(id){ return CAMPAIGN_MISSIONS.find((mission)=>mission.id===id) || null; }
 
-const COLOR = {
-  red:  {main:'#ff3b3b', dark:'#7a1414', light:'#ff8a8a', name:'LEÓN'},
-  blue: {main:'#3b8bff', dark:'#143a7a', light:'#8ac0ff', name:'NELSON'},
-};
+const COLOR = Object.fromEntries(Object.entries(FACTIONS).map(([side,faction])=>[side,{...faction.color,name:faction.displayName}]));
 
 // ---------- Estado ----------
 let G = null;          // estado vivo (host / sp)
@@ -269,6 +147,11 @@ function verifyReplayChecksum(state){
 function normalizeReplay(input){
   // REPLAY_ENGINE_LOCK: una repetición solo se ejecuta con el motor que la produjo.
   if(!input || typeof input!=='object' || input.version!==REPLAY_VERSION || input.engine!==REPLAY_ENGINE) return null;
+  // Replays v2 anteriores a los packs tienen una única migración explícita: el motor v9 solo era REY.
+  const eraId=input.eraId || (input.engine==='reinos-world-v9'?'rey':null);
+  const eraVersion=input.eraVersion || (eraId==='rey'?'1.0.0':null);
+  const rulesVersion=input.rulesVersion || (eraId==='rey'?'1.0.0':null);
+  if(eraId!==ERA.id || eraVersion!==ERA.version || rulesVersion!==ERA.rulesVersion) return null;
   const finalTick=boundedInt(input.finalTick,1,1000000,0);
   const finalChecksum=typeof input.finalChecksum==='string'&&/^[0-9a-f]{8}$/.test(input.finalChecksum)?input.finalChecksum:null;
   if(!finalTick || !finalChecksum) return null;
@@ -289,16 +172,20 @@ function normalizeReplay(input){
   const scenario=kind==='scenario'?normalizeScenario(input.scenario):null;
   const campaignId=kind==='campaign' && campaignMissionById(input.campaignId)?input.campaignId:null;
   if(input.regionId!=null && (kind!=='campaign' || globalThis.REINOS_WORLD?.get(input.regionId)?.mission!==campaignId)) return null;
+  const regionId=kind==='campaign' && globalThis.REINOS_WORLD?.get(input.regionId)?.mission===campaignId ? input.regionId : null;
+  const mapId=input.mapId || (input.engine==='reinos-world-v9' ? (regionId||ERA.world.defaultMap) : null);
+  if(typeof mapId!=='string' || mapId!==(regionId||ERA.world.defaultMap)) return null;
   return {
     version:REPLAY_VERSION,
     engine:REPLAY_ENGINE,
+    eraId,eraVersion,rulesVersion,
     sourceMode, kind,
     title:safeTitle(input.title,'Batalla sin título'),
     side:input.side==='blue'?'blue':'red',
     difficulty:AI_PROFILES[input.difficulty]?input.difficulty:(sourceMode==='host'?'human':'warrior'),
     seed:normalizeSeed(input.seed),
-    campaignId, scenario, commands,
-    regionId:kind==='campaign' && globalThis.REINOS_WORLD?.get(input.regionId)?.mission===campaignId ? input.regionId : null,
+    campaignId, scenario, commands,mapId,
+    regionId,
     finalTick, finalChecksum,
     durationSeconds:Math.max(0,Number(input.durationSeconds)||0),
     finishedAt:Number(input.finishedAt)||Date.now(),
@@ -318,9 +205,10 @@ function beginReplayCapture(sourceMode){
   if(mode==='replay' || sourceMode==='client') return;
   const kind=campaignMissionId?'campaign':currentScenario?'scenario':sourceMode==='host'?'online':'solo';
   replayCapture={
-    version:REPLAY_VERSION, engine:REPLAY_ENGINE, sourceMode, kind,
+    version:REPLAY_VERSION, engine:REPLAY_ENGINE,
+    eraId:ERA.id,eraVersion:ERA.version,rulesVersion:ERA.rulesVersion,sourceMode, kind,
     title:replayTitle(sourceMode), side:mySide, difficulty:aiDifficulty, seed:simulationSeed,
-    campaignId:campaignMissionId||null, regionId:currentRegionId,
+    campaignId:campaignMissionId||null, regionId:currentRegionId,mapId:currentRegionId||ERA.world.defaultMap,
     scenario:currentScenario?{...currentScenario,units:{...currentScenario.units},placements:(currentScenario.placements||[]).map((item)=>({...item}))}:null,
     commands:[],
   };
@@ -372,12 +260,11 @@ function finalizeReplayCapture(winner,state){
 }
 
 function freshState() {
+  const initialResources=Object.fromEntries(Object.entries(ERA.resources.definitions).map(([id,def])=>[def.slot,ERA.resources.initial[id]||0]));
+  const realm=()=>({...initialResources,pop:0,cap:10,age:1,techs:{},research:null});
   return {
     tick: 0, time: 0, nextId: 1, winner: null, seed:simulationSeed,
-    res: {
-      red:  {g:200, w:200, pop:0, cap:10, age:1, techs:{}, research:null},
-      blue: {g:200, w:200, pop:0, cap:10, age:1, techs:{}, research:null},
-    },
+    res: {red:realm(),blue:realm()},
     ents: [], nodes: [], projectiles: [],
     objectives: OBJECTIVE_DEFS.map((objective)=>({...objective, owner:null, control:0})),
     dominance: {red:0, blue:0}, victoryReason:null,
@@ -557,7 +444,7 @@ function spawn(side, kind, x, y, constructed=true) {
 
 function addNode(type, x, y, amount) {
   G.nodes.push({ id: nid(), type, x, y, amount, max: amount,
-                 r: type==='gold'?22:14 });
+                 r: ERA.resources.definitions[type]?.radius||14 });
 }
 
 // ---------- Inicialización de partida ----------
@@ -575,41 +462,18 @@ function initMap() {
   FF.init();
   FOG.init();
 
-  // Castillos
-  const RX = 320, RY = MAP_H/2;
-  const BX = MAP_W-320, BY = MAP_H/2;
-  spawn('red','castle', RX, RY);
-  spawn('blue','castle', BX, BY);
-
-  // Héroes: Rey LEÓN (rojo) y Rey NELSON (azul), al lado del castillo
-  spawn('red','king', RX+70, RY+60);
-  spawn('blue','king', BX-70, BY+60);
-
-  // Aldeanos iniciales
-  for (let i=0;i<4;i++){
-    spawn('red','villager', RX+90+ (i%2)*26, RY-40+i*28);
-    spawn('blue','villager', BX-90-(i%2)*26, BY-40+i*28);
+  const setup=ERA.world.startingSetup;
+  for(const entry of setup.base) spawn(entry.side,entry.kind,entry.x,entry.y);
+  for(let i=0;i<setup.villagers.red.count;i++){
+    const red=setup.villagers.red, blue=setup.villagers.blue;
+    spawn('red','villager',red.x+(i%2)*red.alternateX,red.y+i*red.stepY);
+    spawn('blue','villager',blue.x+(i%2)*blue.alternateX,blue.y+i*blue.stepY);
   }
-
-  // Minas de oro cerca de cada base + centro
-  addNode('gold', RX+150, RY-150, 1600);
-  addNode('gold', RX+170, RY+170, 1600);
-  addNode('gold', BX-150, BY-150, 1600);
-  addNode('gold', BX-170, BY+170, 1600);
-  addNode('gold', MAP_W/2, MAP_H/2-260, 2200);
-  addNode('gold', MAP_W/2, MAP_H/2+260, 2200);
-
-  // Bosques (clusters de árboles) cerca de cada base + dispersos
-  const clusters = [
-    [RX+220, RY+10], [RX+60, RY-260], [RX+60, RY+260],
-    [BX-220, BY+10], [BX-60, BY-260], [BX-60, BY+260],
-    [MAP_W/2-260, MAP_H/2], [MAP_W/2+260, MAP_H/2],
-    [MAP_W/2, 240], [MAP_W/2, MAP_H-240],
-  ];
-  for (const [cx,cy] of clusters) {
-    for (let i=0;i<8;i++){
-      const a = simulationRandom()*Math.PI*2, rd = 18+simulationRandom()*70;
-      addNode('wood', cx+Math.cos(a)*rd, cy+Math.sin(a)*rd, 320);
+  for(const node of setup.resources) addNode(node.type,node.x,node.y,node.amount);
+  for (const [cx,cy] of setup.forestCenters) {
+    for (let i=0;i<setup.treesPerCenter;i++){
+      const a = simulationRandom()*Math.PI*2, rd = setup.treeRadius.min+simulationRandom()*setup.treeRadius.spread;
+      addNode(setup.treeResource, cx+Math.cos(a)*rd, cy+Math.sin(a)*rd, setup.treeAmount);
     }
   }
   const region=activeRegion();
@@ -3303,6 +3167,10 @@ function startGame(opts){
   requestAnimationFrame(loop);
 }
 
+Net.matchContractProvider=()=>ERA_CORE.contract(ERA,{mapId:ERA.world.defaultMap,seed:simulationSeed});
+Net.eraPackProvider=()=>ERA;
+Net.onMatchContract=(contract,role)=>{ if(role==='client' && contract?.seed) resetSimulationRng(contract.seed); };
+
 function updateRoomBadge(code, status){
   const badge = document.getElementById('roomBadge');
   if(!badge) return;
@@ -3446,6 +3314,7 @@ window.REINOS = {
   getMatchMeta(){
     const S=renderState();
     return {
+      eraId:ERA.id,eraVersion:ERA.version,rulesVersion:ERA.rulesVersion,mapId:currentRegionId||ERA.world.defaultMap,
       mode:campaignMissionId?'campaign':currentScenario?'scenario':mode, side:mySide, difficulty:simulationMode()==='sp'?aiDifficulty:'human', age:S?.res?.[mySide]?.age||1,
       faction:FACTIONS[mySide].name, victoryReason:S?.victoryReason||'castle',
       regionId:currentRegionId, regionName:activeRegion()?.name||null,

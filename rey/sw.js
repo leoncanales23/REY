@@ -1,7 +1,8 @@
-const CACHE_NAME = 'reinos-world-v9';
+const CACHE_NAME = 'reinos-era-core-v1';
 const APP_SHELL = [
   './', './index.html', './style.css', './chronicle.css', './campaign.css', './scenario.css', './replay.css', './net.js', './determinism.js', './game.js', './app.js', './chronicle.js', './campaign.js', './scenario.js', './replay.js',
-  './world.js', './world-map.js', './world.css',
+  './world.js', './world-map.js', './world.css', './era-core.js',
+  './content/eras/rey.js', './content/eras/chile1810.js', './content/eras/mars2135.js',
   './manifest.webmanifest', './icons/reinos-192.png', './icons/reinos-512.png',
 ];
 self.addEventListener('install', (event) => {

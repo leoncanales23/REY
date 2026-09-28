@@ -2,7 +2,7 @@
   "name": "reinos",
   "private": true,
   "scripts": {
-    "test": "node scripts/validate.mjs && node scripts/test-determinism.mjs && node scripts/test-world.mjs",
+    "test": "node scripts/validate.mjs && node scripts/test-determinism.mjs && node scripts/test-world.mjs && node scripts/test-era-core.mjs",
     "test:browser": "node scripts/browser-world.mjs"
   },
   "devDependencies": { "playwright": "1.63.0" }

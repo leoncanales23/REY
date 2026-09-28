@@ -1,5 +1,7 @@
 # REINOS
 
+La arquitectura incremental multi-era FRONTERAS, los packs `rey`, `chile1810` y `mars2135`, los contratos de replay/multiplayer y sus límites están documentados en [docs/FRONTERAS_ERA_CORE.md](docs/FRONTERAS_ERA_CORE.md).
+
 RTS original de navegador inspirado en el género clásico de estrategia, construido con Canvas 2D y JavaScript sin dependencias de compilación. Incluye partida individual contra CPU y duelo P2P host-autoritativo mediante PeerJS.
 
 ## Estado real del producto
