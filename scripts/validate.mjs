@@ -6,6 +6,9 @@ const required = [
   'rey/world-map.js',
   'rey/world.css',
   'rey/era-core.js',
+  'rey/era-select.js',
+  'rey/formation-runtime.js',
+  'rey/frontiers.css',
   'rey/content/eras/rey.js',
   'rey/content/eras/chile1810.js',
   'rey/content/eras/mars2135.js',
@@ -47,6 +50,7 @@ const campaign = await readFile('rey/campaign.js', 'utf8');
 const scenario = await readFile('rey/scenario.js', 'utf8');
 const replay = await readFile('rey/replay.js', 'utf8');
 const serviceWorker = await readFile('rey/sw.js', 'utf8');
+const eraSelect = await readFile('rey/era-select.js', 'utf8');
 
 for (const ref of ['world.js', 'world-map.js', 'world.css', 'era-core.js', 'content/eras/rey.js', 'content/eras/chile1810.js', 'content/eras/mars2135.js', 'style.css', 'chronicle.css', 'campaign.css', 'scenario.css', 'replay.css', 'net.js', 'determinism.js', 'game.js', 'app.js', 'chronicle.js', 'campaign.js', 'scenario.js', 'replay.js', 'manifest.webmanifest']) {
   if (!html.includes(ref)) throw new Error(`index.html no referencia ${ref}`);
@@ -110,7 +114,7 @@ for (const id of ['difficultySelect', 'ageInfo', 'factionInfo', 'objectiveInfo',
   if (!html.includes(`id="${id}"`)) throw new Error(`Falta la interfaz de conquista #${id}`);
 }
 const sw = await readFile('rey/sw.js', 'utf8');
-if (!sw.includes('reinos-era-core-v1')) throw new Error('La PWA no renovó su caché para Era Core');
+if (!sw.includes('reinos-chacabuco-v1')) throw new Error('La PWA no renovó su caché para FRONTERAS Chile');
 for (const marker of ['./era-core.js', './content/eras/rey.js', './content/eras/chile1810.js', './content/eras/mars2135.js']) {
   if (!sw.includes(marker)) throw new Error(`La PWA no cachea Era Pack: falta ${marker}`);
 }
@@ -162,6 +166,9 @@ for (const marker of ['reinos.replays.v1','reinos-replays-v2','reinos-replay-v2'
 for (const asset of ['./world.js','./world-map.js','./world.css','./scenario.css','./replay.css','./scenario.js','./replay.js','./determinism.js']) {
   if (!serviceWorker.includes(asset)) throw new Error(`El service worker no cachea ${asset}`);
 }
+for(const asset of ['./era-select.js','./formation-runtime.js','./frontiers.css'])if(!serviceWorker.includes(asset))throw new Error(`La PWA no cachea el cliente FRONTERAS: ${asset}`);
+for(const marker of ["runtimeId:'formations-v1'",'supplies:{','ammunition:{','morale:{','chacabuco1817','historicalObjective'])if(!eraPacks[1].includes(marker))throw new Error(`Pack Chile incompleto: falta ${marker}`);
+for(const marker of ['FRONTERAS_ERA_CORE.activate(requested)','chile1810','MARTE 2135'])if(!eraSelect.includes(marker))throw new Error(`Selector de era incompleto: ${marker}`);
 if (game.includes('Math.random()')) throw new Error('game.js conserva azar no sembrado y rompería la reproducción determinista');
 for (const marker of ['reinos-state-v1','canonicalState','checksum','fnv1a']) {
   if (!determinism.includes(marker)) throw new Error(`Motor de checksum incompleto: falta ${marker}`);

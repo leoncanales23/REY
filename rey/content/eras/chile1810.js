@@ -1,15 +1,57 @@
-/* Architecture-only manifest. No unit stats, force sizes, uniforms, or scenarios are asserted. */
+/* FRONTERAS // Chile 1817 playable experimental vertical slice. */
 (() => {
   'use strict';
-  FRONTERAS_ERA_CORE.register({schemaVersion:1,id:'chile1810',name:'FRONTERAS // CHILE 1810–1826',version:'0.1.0',rulesVersion:'0.1.0',status:'manifest-only',setting:'historical',
-    entities:{units:{line_infantry:{name:'Infantería de línea',capabilities:['infantry','formation']},cazadores:{name:'Cazadores',capabilities:['infantry','scouting']},grenadiers:{name:'Granaderos',capabilities:['infantry']},militia:{name:'Milicias',capabilities:['infantry','local-defense']},cavalry:{name:'Caballería',capabilities:['mounted']},artillery:{name:'Artillería',capabilities:['crew-served']},officers:{name:'Oficiales y comandantes',capabilities:['command']}},buildings:{},special:{}},
-    resources:{definitions:{supplies:{name:'Suministros'},ammunition:{name:'Munición'},morale:{name:'Moral'}},initial:{},costs:{}},
-    ages:{definitions:{}},technologies:{definitions:{}},factions:{definitions:{}},commanders:{abilities:{},roster:[
-      {id:'bernardo_ohiggins',name:"Bernardo O'Higgins",status:'planned',sources:[]},
-      {id:'jose_de_san_martin',name:'José de San Martín',status:'planned',sources:[]},
+  const sources={
+    memoriaChilenaMap:{title:'Plano de la Batalla de Chacabuco. 12 de febrero de 1817',url:'https://www.memoriachilena.gob.cl/602/w3-article-121259.html'},
+    memoriaChilenaCartography:{title:'Planos de la Guerra de la Independencia',url:'https://www.memoriachilena.gob.cl/602/w3-article-582420.html'},
+    memoriaChilenaBattle:{title:'Batalla de Chacabuco',url:'https://www.memoriachilena.gob.cl/602/w3-article-94407.html'},
+    museoHistoria:{title:'La batalla de Chacabuco',url:'https://museohistoriconacional.cultura.gob.ar/noticia/la-batalla-de-chacabuco/'},
+    academiaBattle:{title:'Batalla de Chacabuco',url:'https://www.academiahistoriamilitar.cl/academia/batalla-de-chacabuco/'},
+    academiaIndependencia:{title:'La Independencia de Chile',url:'https://www.academiahistoriamilitar.cl/academia/la-independencia-de-chile-2/'},
+    historiaEjercito:{title:'Historia del Ejército de Chile, tomo II: Batalla de Chacabuco',url:'https://www.academiahistoriamilitar.cl/academia/wp-content/uploads/2021/11/Historia-del-Ejercito-de-Chile-Tomo-02_compressed.pdf'},
+  };
+  const units={
+    line_infantry:{name:'Infantería de línea',capabilities:['infantry','formation','firearm'],hp:185,r:23,speed:43,attack:17,range:205,sight:340,reload:3.2,ammo:18,morale:100,formation:'line',front:1.25},
+    cazadores:{name:'Cazadores',capabilities:['infantry','formation','firearm','scouting'],hp:145,r:19,speed:56,attack:14,range:235,sight:430,reload:2.8,ammo:16,morale:100,formation:'column',front:0.9},
+    grenadiers:{name:'Granaderos',capabilities:['infantry','formation','firearm','shock'],hp:205,r:24,speed:45,attack:21,range:190,sight:330,reload:3.5,ammo:15,morale:115,formation:'line',front:1.2},
+    cavalry:{name:'Granaderos a caballo',capabilities:['mounted','shock','formation'],hp:225,r:22,speed:95,attack:34,range:28,sight:390,reload:1.5,ammo:0,morale:115,formation:'column',front:1.05},
+    artillery:{name:'Pieza de campaña',capabilities:['artillery','crew-served','firearm'],hp:155,r:25,speed:19,attack:54,range:390,sight:470,reload:8.5,ammo:8,morale:90,formation:'deployed',front:1,splash:55,projectileSpeed:230},
+    officer:{name:'Oficial de mando',capabilities:['command','rally','scouting'],hp:130,r:17,speed:57,attack:5,range:20,sight:450,reload:2,morale:100,commandAura:270,rally:24},
+    supply_train:{name:'Carro de suministros',capabilities:['logistics'],hp:190,r:24,speed:35,attack:0,range:0,sight:210,reload:0,morale:100},
+  };
+  const map={id:'chacabuco1817',name:'Cuesta y llano de Chacabuco',width:2600,height:1700,theme:'chile-1817',terrain:{kind:'valley-pass',ridge:[[910,120],[1080,0],[1220,0],[1330,180],[1250,430],[1120,690],[1190,940],[1310,1170],[1210,1450],[1050,1700],[900,1540],[1010,1260],[920,980],[1000,720],[850,450]],oldRoad:[[500,1540],[690,1310],[820,1100],[930,820],[1080,650],[1280,600],[1570,540]],newRoad:[[240,1440],[370,1190],[500,910],[690,690],[910,540],[1170,440],[1460,400],[1720,350]],watercourse:[[1050,0],[1120,270],[1040,520],[1090,790],[1030,1070],[1110,1380],[1050,1700]],label:'CHACABUCO · 12 FEBRERO 1817'},
+    historicalGeometry:{basis:'Plano Carlos Prieto, 1890, Memoria Chilena MC0000070; route/position schematic, not GIS',features:['cuesta','elevated ridgeline','two approach roads','estero','open plain']},
+    deployment:[
+      {side:'red',kind:'officer',commander:'jose_de_san_martin',x:255,y:850,label:'San Martín · reserva/mando'},
+      {side:'red',kind:'officer',commander:'bernardo_ohiggins',x:520,y:1040,label:'División O’Higgins'},
+      {side:'red',kind:'officer',commander:'estanislao_soler',x:330,y:670,label:'División Soler'},
+      {side:'red',kind:'line_infantry',x:670,y:1020,formation:'line'},
+      {side:'red',kind:'grenadiers',x:590,y:1110,formation:'column'},
+      {side:'red',kind:'cazadores',x:430,y:820,formation:'column',label:'División Soler · aproximación occidental'},
+      {side:'red',kind:'cavalry',x:740,y:1180,formation:'column'},
+      {side:'red',kind:'artillery',x:340,y:950,formation:'deployed'},
+      {side:'red',kind:'supply_train',x:220,y:1030},
+      {side:'blue',kind:'officer',commander:'rafael_maroto',x:1510,y:780,label:'Mando realista · Maroto'},
+      {side:'blue',kind:'line_infantry',x:1390,y:700,formation:'line'},
+      {side:'blue',kind:'line_infantry',x:1410,y:900,formation:'line'},
+      {side:'blue',kind:'cazadores',x:1600,y:610,formation:'line'},
+      {side:'blue',kind:'grenadiers',x:1680,y:840,formation:'line'},
+      {side:'blue',kind:'artillery',x:1500,y:1020,formation:'deployed'},
+      {side:'blue',kind:'supply_train',x:1790,y:1030},
+    ],
+    objectives:[{id:'pass',name:'PASO DE CHACABUCO',x:1110,y:590,radius:135}],
+    historicalObjective:'Desorganiza la posición realista y controla el paso. La división occidental y el avance frontal son rutas tácticas, no una reproducción minuto a minuto.',
+  };
+  FRONTERAS_ERA_CORE.register({schemaVersion:1,id:'chile1810',name:'FRONTERAS // CHILE 1810–1826',version:'0.2.0',rulesVersion:'0.2.0',status:'playable',setting:'historical',runtimeId:'formations-v1',
+    theme:{id:'andes-1817',palette:{ink:'#1c1714',paper:'#d8c7a4',sand:'#b89a6d',rust:'#934c35',independent:'#536d70',royalist:'#9b4939',smoke:'#4b4037'},title:'FRONTERAS // CHILE 1817'},
+    entities:{units,buildings:{},special:{}},
+    resources:{definitions:{supplies:{name:'Suministros',icon:'▰',kind:'stock'},ammunition:{name:'Munición',icon:'◈',kind:'stock'},morale:{name:'Moral',icon:'◆',kind:'unit-state'}},initial:{supplies:180,ammunition:210},costs:{}},
+    ages:{definitions:{}},technologies:{definitions:{}},factions:{definitions:{red:{name:'Ejército de los Andes / fuerzas independentistas',displayName:'INDEPENDENTISTAS',short:'ANDES',color:{main:'#536d70',dark:'#273c41',light:'#9cbbb7'}},blue:{name:'Fuerzas realistas',displayName:'REALISTAS',short:'REALISTAS',color:{main:'#9b4939',dark:'#52251f',light:'#d18b72'}}}},commanders:{abilities:{rally:{name:'REORGANIZAR',cooldown:35,range:270,amount:24,kind:'morale',note:'Orden de mando: recupera cohesión de formaciones próximas; abstracción RTS.'}},roster:[
+      {id:'bernardo_ohiggins',name:"Bernardo O'Higgins",status:'scenario',sources:['academiaBattle']},
+      {id:'jose_de_san_martin',name:'José de San Martín',status:'scenario',sources:['academiaBattle','museoHistoria']},
       {id:'jose_miguel_carrera',name:'José Miguel Carrera',status:'planned',sources:[]},
       {id:'manuel_rodriguez',name:'Manuel Rodríguez',status:'planned',sources:[]},
-      {id:'estanislao_soler',name:'Estanislao Soler',status:'planned',sources:[]},
+      {id:'estanislao_soler',name:'Miguel Estanislao Soler',status:'scenario',sources:['academiaBattle']},
       {id:'juan_gregorio_de_las_heras',name:'Juan Gregorio de Las Heras',status:'planned',sources:[]},
       {id:'manuel_blanco_encalada',name:'Manuel Blanco Encalada',status:'planned',sources:[]},
       {id:'jose_manuel_borgono',name:'José Manuel Borgoño',status:'planned',sources:[]},
@@ -17,10 +59,11 @@
       {id:'mariano_osorio',name:'Mariano Osorio',status:'planned',sources:[]},
       {id:'gabino_gainza',name:'Gabino Gaínza',status:'planned',sources:[]},
       {id:'casimiro_marco_del_pont',name:'Casimiro Marcó del Pont',status:'planned',sources:[]},
-      {id:'rafael_maroto',name:'Rafael Maroto',status:'planned',sources:[]},
+      {id:'rafael_maroto',name:'Rafael Maroto',status:'scenario',sources:['academiaBattle','museoHistoria']},
     ]},
-    world:{defaultMap:null,maps:[],objectives:[],events:[],mercenaryCamps:{}},
-    campaign:{missions:[],sources:[],modes:['historical','alternate'],supportedContexts:['logistics-routes','defensive-positions','intelligence','guerrilla','campaign'],sourcePolicy:'historical missions require cited sources'},
-    scenario:{defaults:null},
+    world:{defaultMap:map.id,maps:[map],objectives:map.objectives,events:{},mercenaryCamps:{}},
+    campaign:{missions:[{id:'chacabuco1817',mode:'historical',title:'Chacabuco · 12 febrero 1817',sources:['memoriaChilenaMap','memoriaChilenaCartography','memoriaChilenaBattle','museoHistoria','academiaBattle','academiaIndependencia','historiaEjercito']}],sources:Object.entries(sources).map(([id,value])=>({id,...value})),modes:['historical','alternate'],supportedContexts:['logistics-routes','defensive-positions','intelligence','guerrilla','campaign'],sourcePolicy:'historical missions require cited sources'},
+    scenario:{defaults:{mapId:map.id,mode:'historical',side:'red',difficulty:'field-command',objective:'pass',holdSeconds:45}},
+    runtime:{id:'formations-v1',victory:{kind:'objective-or-route',holdSeconds:45,routeMoraleThreshold:0.15},formations:{line:{speed:0.76,range:1.12,incoming:0.92,front:1.3},column:{speed:1.12,range:0.82,incoming:1.18,front:0.8},deployed:{speed:0,range:1.15,incoming:1.05,front:1}}},
   });
 })();
