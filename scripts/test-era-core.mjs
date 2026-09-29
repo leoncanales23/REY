@@ -37,6 +37,7 @@ assert.equal(net.validateCommand({type:'build',kind:'habitat',x:100,y:100,villag
 assert.equal(net.validateCommand({type:'research',buildingId:1,researchId:'recycle'}).researchId,'recycle');
 const contract=api.contract(api.active(),{mapId:'orbital',seed:123});
 assert.equal(api.matchesContract(contract,contract),true);
+assert.equal(api.matchesContract({...contract,seed:124},contract),false,'dos contratos con distinta semilla no son compatibles');
 assert.equal(api.matchesContract({...contract,rulesVersion:'3.0.0'},contract),false);
 assert.equal(api.activate('rey'),true);
 assert.equal(net.validateCommand({type:'train',buildingId:1,unit:'swordsman'}).unit,'swordsman');
