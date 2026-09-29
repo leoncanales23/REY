@@ -5,6 +5,10 @@ const required = [
   'rey/world.js',
   'rey/world-map.js',
   'rey/world.css',
+  'rey/era-core.js',
+  'rey/content/eras/rey.js',
+  'rey/content/eras/chile1810.js',
+  'rey/content/eras/mars2135.js',
   'rey/index.html',
   'rey/style.css',
   'rey/chronicle.css',
@@ -24,6 +28,7 @@ const required = [
   'rey/icons/reinos-192.png',
   'rey/icons/reinos-512.png',
   'scripts/test-determinism.mjs',
+  'scripts/test-era-core.mjs',
   'scripts/browser-determinism.mjs',
 ];
 
@@ -43,7 +48,7 @@ const scenario = await readFile('rey/scenario.js', 'utf8');
 const replay = await readFile('rey/replay.js', 'utf8');
 const serviceWorker = await readFile('rey/sw.js', 'utf8');
 
-for (const ref of ['world.js', 'world-map.js', 'world.css', 'style.css', 'chronicle.css', 'campaign.css', 'scenario.css', 'replay.css', 'net.js', 'determinism.js', 'game.js', 'app.js', 'chronicle.js', 'campaign.js', 'scenario.js', 'replay.js', 'manifest.webmanifest']) {
+for (const ref of ['world.js', 'world-map.js', 'world.css', 'era-core.js', 'content/eras/rey.js', 'content/eras/chile1810.js', 'content/eras/mars2135.js', 'style.css', 'chronicle.css', 'campaign.css', 'scenario.css', 'replay.css', 'net.js', 'determinism.js', 'game.js', 'app.js', 'chronicle.js', 'campaign.js', 'scenario.js', 'replay.js', 'manifest.webmanifest']) {
   if (!html.includes(ref)) throw new Error(`index.html no referencia ${ref}`);
 }
 
@@ -98,14 +103,21 @@ for (const asset of ['./chronicle.css', './chronicle.js', './campaign.css', './c
 for (const marker of ['const AGE_DEFS =', 'const RESEARCH =', "case 'research'", 'stepResearch(dt)', 'getMatchMeta()', 'AI_AGE_RESERVE', 'activeState()', 'savingForAge']) {
   if (!game.includes(marker)) throw new Error(`Era de Conquista incompleta en game.js: falta ${marker}`);
 }
-for (const marker of ['allowedResearch', "case 'research'", 'allowedAbilities', 'allowedCamps', "case 'ability'", "case 'hireMercenaries'"]) {
+for (const marker of ['commandCatalog', 'catalog.research', 'catalog.abilities', 'catalog.camps', "case 'research'", "case 'ability'", "case 'hireMercenaries'"]) {
   if (!net.includes(marker)) throw new Error(`Contrato P2P de tecnologías incompleto: falta ${marker}`);
 }
 for (const id of ['difficultySelect', 'ageInfo', 'factionInfo', 'objectiveInfo', 'eventInfo', 'campaignInfo', 'openCampaignBtn', 'campaignDialog', 'campaignMissions', 'campaignProgress', 'campaignRetryBtn', 'campaignNextBtn']) {
   if (!html.includes(`id="${id}"`)) throw new Error(`Falta la interfaz de conquista #${id}`);
 }
 const sw = await readFile('rey/sw.js', 'utf8');
-if (!sw.includes('reinos-world-v9')) throw new Error('La PWA no renovó su caché para el mapa del reino');
+if (!sw.includes('reinos-era-core-v1')) throw new Error('La PWA no renovó su caché para Era Core');
+for (const marker of ['./era-core.js', './content/eras/rey.js', './content/eras/chile1810.js', './content/eras/mars2135.js']) {
+  if (!sw.includes(marker)) throw new Error(`La PWA no cachea Era Pack: falta ${marker}`);
+}
+const eraPacks = await Promise.all(['rey','chile1810','mars2135'].map((id) => readFile(`rey/content/eras/${id}.js`, 'utf8')));
+for (const marker of ["id:'rey'", "id:'chile1810'", "id:'mars2135'", 'campaign:{missions:', 'sources:[]']) {
+  if (!eraPacks.some((pack) => pack.includes(marker))) throw new Error(`Falta contrato de Era Pack ${marker}`);
+}
 
 for (const marker of ['const FACTIONS =', 'OBJECTIVE_DEFS', 'stepObjectives(dt)', "victoryReason='supremacy'", 'objectives: G.objectives', 'aiObjectiveTarget', 'FOG.update(mySide,S)', 'AI_HOLD_SUPREMACY', 'OBJECTIVES_AFTER_FOG']) {
   if (!game.includes(marker)) throw new Error(`Reinos Asimétricos incompleto: falta ${marker}`);

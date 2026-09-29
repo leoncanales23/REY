@@ -100,7 +100,7 @@
     meta.textContent = `${kindName(record.kind)} · ${sideName(record.side)} · ${formatDuration(record.durationSeconds)} · ${record.commands.length} órdenes`;
 
     const detail = document.createElement('p');
-    detail.textContent = `Semilla ${record.seed} · checksum ${record.finalChecksum} · ${formatDate(entry.savedAt || record.finishedAt || Date.now())}`;
+    detail.textContent = `FRONTERAS // ${record.eraId} ${record.eraVersion} · reglas ${record.rulesVersion} · semilla ${record.seed} · checksum ${record.finalChecksum} · ${formatDate(entry.savedAt || record.finishedAt || Date.now())}`;
 
     const actions = document.createElement('div');
     actions.className = 'replay-card-actions';
