@@ -114,7 +114,8 @@
     if (!plain(remote) || !local) return false;
     return remote.eraId === local.eraId && remote.eraVersion === local.eraVersion &&
       remote.rulesVersion === local.rulesVersion && remote.mapId === local.mapId &&
-      Number.isInteger(remote.seed) && remote.seed > 0;
+      Number.isInteger(remote.seed) && remote.seed > 0 &&
+      Number.isInteger(local.seed) && local.seed > 0 && remote.seed === local.seed;
   }
 
   globalThis.FRONTERAS_ERA_CORE = Object.freeze({
