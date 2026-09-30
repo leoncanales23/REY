@@ -28,9 +28,13 @@ jobs:
           node --check rey/world.js
           node --check rey/world-map.js
           node --check rey/era-core.js
+          node --check rey/era-select.js
+          node --check rey/formation-runtime.js
           node --check rey/content/eras/rey.js
           node --check rey/content/eras/chile1810.js
           node --check rey/content/eras/mars2135.js
+          node --check scripts/browser-world.mjs
+          node --check scripts/test-era-core.mjs
       - name: Validate app shell and config
         run: node scripts/validate.mjs
       - name: Check canonical checksum contract
@@ -49,7 +53,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: kingdom-browser-evidence
-          path: artifacts/
+          name: fronteras-browser-evidence
+          path: docs/evidence/chacabuco/
       - name: Check browser determinism
         run: node scripts/browser-determinism.mjs

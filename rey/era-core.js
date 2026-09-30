@@ -83,7 +83,7 @@
   function active() { return get(activeId); }
   function activate(id) {
     const pack = get(id);
-    if (!pack) return false;
+    if (!pack || pack.status !== 'playable') return false;
     activeId = id;
     return true;
   }
@@ -107,6 +107,8 @@
     return Object.freeze({
       eraId: pack.id, eraVersion: pack.version, rulesVersion: pack.rulesVersion,
       mapId: String(match.mapId || pack.world.defaultMap || ''), seed: Number(match.seed) >>> 0,
+      mode: String(match.mode || pack.campaign.modes?.[0] || 'standard'),
+      scenarioId: String(match.scenarioId || ''),
     });
   }
 
@@ -114,6 +116,7 @@
     if (!plain(remote) || !local) return false;
     return remote.eraId === local.eraId && remote.eraVersion === local.eraVersion &&
       remote.rulesVersion === local.rulesVersion && remote.mapId === local.mapId &&
+      remote.mode === local.mode && remote.scenarioId === local.scenarioId &&
       Number.isInteger(remote.seed) && remote.seed > 0 &&
       Number.isInteger(local.seed) && local.seed > 0 && remote.seed === local.seed;
   }

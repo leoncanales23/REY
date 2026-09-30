@@ -100,6 +100,16 @@ const Net = {
         if (!ids || !entityId(input.nodeId)) return null;
         return { type: 'gather', ids, nodeId: input.nodeId };
       }
+      case 'formation': {
+        const ids=this._ids(input.ids), pack=this.eraPackProvider?.();
+        const allowed=pack&&Object.values(pack.entities.units).some(def=>def.capabilities?.includes('formation'));
+        if(!ids||!['line','column'].includes(input.formation)||!allowed)return null;
+        return {type:'formation',ids,formation:input.formation};
+      }
+      case 'resupply': {
+        const ids=this._ids(input.ids);
+        return ids?{type:'resupply',ids}:null;
+      }
       case 'build': {
         const villagerIds = this._ids(input.villagerIds);
         if (!villagerIds || !catalog.buildings.has(input.kind) || !worldX(input.x) || !worldY(input.y)) return null;
@@ -153,7 +163,8 @@ const Net = {
     const contract = () => this.matchContractProvider?.() || globalThis.FRONTERAS_ERA_CORE?.contract?.();
     const sameEditionAndMap = (candidate, local) => candidate && local &&
       candidate.eraId === local.eraId && candidate.eraVersion === local.eraVersion &&
-      candidate.rulesVersion === local.rulesVersion && candidate.mapId === local.mapId;
+      candidate.rulesVersion === local.rulesVersion && candidate.mapId === local.mapId &&
+      candidate.mode === local.mode && candidate.scenarioId === local.scenarioId;
     const sameFullContract = (candidate, expected) => sameEditionAndMap(candidate, expected) &&
       Number.isInteger(candidate.seed) && candidate.seed > 0 && candidate.seed === expected.seed;
     let handshakeTimer = null;

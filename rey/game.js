@@ -19,6 +19,8 @@ const REPLAY_COMMAND_LIMIT = 6000;
 const ERA_CORE = globalThis.FRONTERAS_ERA_CORE;
 const ERA = ERA_CORE?.active();
 if (!ERA || ERA.status !== 'playable') throw new Error('La simulación necesita que el Era Pack activo tenga estado playable.');
+const ERA_RUNTIME = ERA.runtimeId ? globalThis.FRONTERAS_RUNTIMES?.get?.(ERA.runtimeId) : null;
+if (ERA_RUNTIME) { ERA_RUNTIME.attach({ERA, ERA_CORE, Net, window, document}); return; }
 const SCENARIO_PLACEMENT_LIMIT = ERA.world.scenario.placementLimit;
 const SCENARIO_PLACEMENT_KINDS = new Set(ERA.world.scenario.placementKinds);
 const SCENARIO_NEUTRAL_KINDS = new Set(ERA.world.scenario.neutralKinds);

@@ -23,6 +23,7 @@
       age: Number(value?.age) || 1,
       techs: techList(value?.techs),
       research: canonicalResearch(value?.research),
+      ...(value?.ledger && typeof value.ledger === 'object' ? {ledger:Object.fromEntries(Object.keys(value.ledger).sort().map(key=>[key,number(value.ledger[key])]))} : {}),
     };
   }
 
@@ -116,6 +117,7 @@
     if (!state || typeof state !== 'object') return null;
     return {
       version: VERSION,
+      ...(state.eraId ? {era:{id:String(state.eraId),version:String(state.eraVersion||''),rulesVersion:String(state.rulesVersion||''),mapId:String(state.mapId||''),mode:String(state.mode||'')}} : {}),
       ...(state.regionId ? {regionId:String(state.regionId)} : {}),
       tick: Number(state.tick) || 0,
       time: number(state.time),
@@ -170,6 +172,7 @@
       },
       scenario: canonicalScenario(state.scenario),
       campaign: canonicalCampaign(state.campaign),
+      ...(Array.isArray(state.units) ? {formations:state.units.map(entity=>({id:Number(entity?.id)||0,side:String(entity?.side||''),kind:String(entity?.kind||''),x:number(entity?.x),y:number(entity?.y),hp:number(entity?.hp),maxHp:number(entity?.maxHp),ammo:number(entity?.ammo),maxAmmo:number(entity?.maxAmmo),reload:number(entity?.reload),morale:number(entity?.morale),formation:String(entity?.formation||''),facing:Number(entity?.facing)||0,targetId:Number(entity?.targetId)||0,routed:!!entity?.routed,order:entity?.order?{type:String(entity.order.type||''),x:number(entity.order.x),y:number(entity.order.y),targetId:Number(entity.order.targetId)||0}:null,commander:entity?.commander||null})).sort((a,b)=>a.id-b.id),objective:state.objective?{id:String(state.objective.id||''),owner:state.objective.owner||null,hold:{red:number(state.objective.hold?.red),blue:number(state.objective.hold?.blue)}}:null,projectiles:(state.projectiles||[]).map(p=>({id:Number(p.id)||0,x:number(p.x),y:number(p.y),targetId:Number(p.targetId)||0,side:String(p.side||''),kind:String(p.kind||''),damage:number(p.damage),speed:number(p.speed),splash:number(p.splash),radius:number(p.radius),life:number(p.life)})).sort((a,b)=>a.id-b.id),smoke:(state.smoke||[]).map(p=>({x:number(p.x),y:number(p.y),t:number(p.t),size:number(p.size)})),weather:String(state.weather||''),weatherFactor:number(state.weatherFactor),stats:JSON.parse(JSON.stringify(state.stats||{})),rallyCooldown:{red:number(state.rallyCooldown?.red),blue:number(state.rallyCooldown?.blue)}} : {}),
     };
   }
 
